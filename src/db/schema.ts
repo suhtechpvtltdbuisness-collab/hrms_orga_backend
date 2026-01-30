@@ -8,8 +8,10 @@ import {
   boolean,
   pgEnum,
   decimal,
+  doublePrecision,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
+import { number } from "zod";
 
 // Enums
 export const userTypeEnum = pgEnum("user_type", [
@@ -46,11 +48,20 @@ export const designationTypeEnum = pgEnum("designation_type", [
   "temporary",
   "contract",
 ]);
+export const planTypeEnum = pgEnum("plan_type", [
+  "free_trial",
+  "basic",
+  "premium",
+  "enterprise",
+]);
 
 // Organization Table
-export const organization = pgTable("organization", {
+export const Plain = pgTable("plain", {
   id: serial("id").primaryKey(),
-  name: varchar("name", { length: 255 }).notNull(),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id),
+  price: doublePrecision("price").notNull(),
   type: organizationTypeEnum("type").notNull(),
   active: boolean("active").default(true).notNull(),
   isDeleted: boolean("is_deleted").default(false).notNull(),
@@ -81,7 +92,6 @@ export const users = pgTable("users", {
   address: text("address"),
   aadharNo: integer("aadhar_no"),
   pancardNo: integer("pancard_no"),
-  organizationId: integer("organization_id").references(() => organization.id),
   isDeleted: boolean("is_deleted").default(false).notNull(),
   createdBy: integer("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -194,47 +204,21 @@ export const logActivity = pgTable("log_activity", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-// Organization Order Table
-export const orgOrder = pgTable("org_order", {
-  id: serial("id").primaryKey(),
-  organizationId: integer("organization_id").references(() => organization.id),
-  plan: varchar("plan", { length: 100 }),
-  paymentMethod: varchar("payment_method", { length: 100 }),
-  paymentMode: paymentModeEnum("payment_mode").notNull(),
-  price: decimal("price", { precision: 15, scale: 2 }).notNull(),
-  offer: varchar("offer", { length: 255 }),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
 // Organization Payment Table
-export const orgPayment = pgTable("org_payment", {
+export const PlainPayment = pgTable("plain_payment", {
   id: serial("id").primaryKey(),
-  orgOrderId: integer("org_order_id"),
+  plainId: integer("plain_id")
+    .notNull()
+    .references(() => Plain.id),
+
   status: varchar("status", { length: 50 }),
+  transactionId: varchar("transaction_id", { length: 255 }),
+  paymentMode: paymentModeEnum("payment_mode").notNull(),
   totalAmount: decimal("total_amount", { precision: 15, scale: 2 }).notNull(),
   paymentId: varchar("payment_id", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
-
-// Relations
-export const organizationRelations = relations(organization, ({ many }) => ({
-  users: many(users),
-  orgOrders: many(orgOrder),
-}));
-
-export const usersRelations = relations(users, ({ one, many }) => ({
-  organization: one(organization, {
-    fields: [users.organizationId],
-    references: [organization.id],
-  }),
-  documents: many(document),
-  attendance: many(attendance),
-  leaves: many(leave),
-  payroll: many(payroll),
-  trainingAndDevelopment: many(trainingAndDevelopment),
-  logActivities: many(logActivity),
-}));
 
 export const departmentRelations = relations(department, ({ many }) => ({
   designations: many(designation),
@@ -287,27 +271,12 @@ export const trainingAndDevelopmentRelations = relations(
       fields: [trainingAndDevelopment.empId],
       references: [users.empId],
     }),
-  })
+  }),
 );
 
 export const logActivityRelations = relations(logActivity, ({ one }) => ({
   user: one(users, {
     fields: [logActivity.empId],
     references: [users.empId],
-  }),
-}));
-
-export const orgOrderRelations = relations(orgOrder, ({ one, many }) => ({
-  organization: one(organization, {
-    fields: [orgOrder.organizationId],
-    references: [organization.id],
-  }),
-  orgPayments: many(orgPayment),
-}));
-
-export const orgPaymentRelations = relations(orgPayment, ({ one }) => ({
-  orgOrder: one(orgOrder, {
-    fields: [orgPayment.orgOrderId],
-    references: [orgOrder.id],
   }),
 }));
