@@ -5,16 +5,6 @@ import { users, Plain } from "../db/schema.js";
 import { generateTokens, verifyToken } from "../utils/jwt.js";
 import { eq, and } from "drizzle-orm";
 
-// Generate a unique employee ID
-const generateEmployeeId = async (): Promise<string> => {
-  const prefix = "EMP";
-  const timestamp = Date.now().toString().slice(-6);
-  const random = Math.floor(Math.random() * 1000)
-    .toString()
-    .padStart(3, "0");
-  return `${prefix}${timestamp}${random}`;
-};
-
 // Register new user (admin only)
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -59,14 +49,10 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Generate unique employee ID
-    const empId = await generateEmployeeId();
-
     // Create user with type admin
     const [newUser] = await db
       .insert(users)
       .values({
-        empId,
         name,
         email,
         password: hashedPassword,
@@ -121,7 +107,6 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       data: {
         user: {
           id: newUser.id,
-          empId: newUser.empId,
           name: newUser.name,
           email: newUser.email,
           type: newUser.type,
@@ -202,11 +187,11 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       data: {
         user: {
           id: user.id,
-          empId: user.empId,
           name: user.name,
           email: user.email,
           type: user.type,
           active: user.active,
+
         },
         tokens,
       },
@@ -333,7 +318,6 @@ export const getProfile = async (
       data: {
         user: {
           id: user.id,
-          empId: user.empId,
           name: user.name,
           email: user.email,
           phone: user.phone,

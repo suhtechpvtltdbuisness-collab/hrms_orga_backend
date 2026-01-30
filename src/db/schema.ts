@@ -9,6 +9,7 @@ import {
   pgEnum,
   decimal,
   doublePrecision,
+  PgUpdateBase,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { number } from "zod";
@@ -75,12 +76,12 @@ export const Plain = pgTable("plain", {
 // Users Table
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
-  empId: varchar("emp_id", { length: 100 }).notNull().unique(),
   name: varchar("name", { length: 255 }).notNull(),
   gender: varchar("gender", { length: 20 }),
   dob: varchar("dob", { length: 50 }),
   bloodGroup: varchar("blood_group", { length: 10 }),
   password: text("password").notNull(),
+  isAdmin: boolean("is_admin").default(false).notNull(),
   maritalStatus: varchar("marital_status", { length: 50 }),
   type: userTypeEnum("type").notNull(),
   eContactName: varchar("e_contact_name", { length: 255 }),
@@ -94,6 +95,18 @@ export const users = pgTable("users", {
   pancardNo: integer("pancard_no"),
   isDeleted: boolean("is_deleted").default(false).notNull(),
   createdBy: integer("created_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const Employee = pgTable("employee", {
+  id: serial("id").primaryKey(),
+  adminId: integer("admin_id")
+    .notNull()
+    .references(() => users.id),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -144,8 +157,12 @@ export const document = pgTable("document", {
 // Attendance Table
 export const attendance = pgTable("attendance", {
   id: serial("id").primaryKey(),
-  empId: varchar("emp_id", { length: 100 }).notNull(),
-  markedBy: integer("marked_by"),
+  empId: integer("emp_id")
+    .notNull()
+    .references(() => Employee.id),
+  markedBy: integer("marked_by")
+    .notNull()
+    .references(() => users.id),
   isDeleted: boolean("is_deleted").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -157,7 +174,9 @@ export const leave = pgTable("leave", {
   type: leaveTypeEnum("type").notNull(),
   total: integer("total").notNull(),
   taken: integer("taken").default(0).notNull(),
-  empId: varchar("emp_id", { length: 100 }).notNull(),
+  empId: integer("emp_id")
+    .notNull()
+    .references(() => Employee.id),
   createdBy: integer("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -177,7 +196,9 @@ export const payroll = pgTable("payroll", {
   conveyancePay: decimal("conveyance_pay", { precision: 15, scale: 2 }),
   overtimePay: decimal("overtime_pay", { precision: 15, scale: 2 }),
   specialPay: decimal("special_pay", { precision: 15, scale: 2 }),
-  empId: varchar("emp_id", { length: 100 }).notNull(),
+  empId: integer("emp_id")
+    .notNull()
+    .references(() => Employee.id),
   isDeleted: boolean("is_deleted").default(false).notNull(),
   createdBy: integer("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -187,7 +208,9 @@ export const payroll = pgTable("payroll", {
 // Training and Development Table
 export const trainingAndDevelopment = pgTable("training_and_development", {
   id: serial("id").primaryKey(),
-  empId: varchar("emp_id", { length: 100 }).notNull(),
+  empId: integer("emp_id")
+    .notNull()
+    .references(() => Employee.id),
   type: varchar("type", { length: 100 }),
   videos: text("videos"),
   docs: text("docs"),
@@ -200,7 +223,9 @@ export const logActivity = pgTable("log_activity", {
   id: serial("id").primaryKey(),
   type: varchar("type", { length: 100 }),
   description: text("description"),
-  empId: varchar("emp_id", { length: 100 }).notNull(),
+  empId: integer("emp_id")
+    .notNull()
+    .references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -235,21 +260,21 @@ export const designationRelations = relations(designation, ({ one }) => ({
 export const documentRelations = relations(document, ({ one }) => ({
   user: one(users, {
     fields: [document.empId],
-    references: [users.empId],
+    references: [users.id],
   }),
 }));
 
 export const attendanceRelations = relations(attendance, ({ one }) => ({
-  user: one(users, {
+  user: one(Employee, {
     fields: [attendance.empId],
-    references: [users.empId],
+    references: [Employee.id],
   }),
 }));
 
 export const leaveRelations = relations(leave, ({ one }) => ({
-  user: one(users, {
+  user: one(Employee, {
     fields: [leave.empId],
-    references: [users.empId],
+    references: [Employee.id],
   }),
 }));
 
@@ -258,18 +283,18 @@ export const payrollRelations = relations(payroll, ({ one }) => ({
     fields: [payroll.departmentId],
     references: [department.id],
   }),
-  user: one(users, {
+  user: one(Employee, {
     fields: [payroll.empId],
-    references: [users.empId],
+    references: [Employee.id],
   }),
 }));
 
 export const trainingAndDevelopmentRelations = relations(
   trainingAndDevelopment,
   ({ one }) => ({
-    user: one(users, {
+    user: one(Employee, {
       fields: [trainingAndDevelopment.empId],
-      references: [users.empId],
+      references: [Employee.id],
     }),
   }),
 );
@@ -277,6 +302,6 @@ export const trainingAndDevelopmentRelations = relations(
 export const logActivityRelations = relations(logActivity, ({ one }) => ({
   user: one(users, {
     fields: [logActivity.empId],
-    references: [users.empId],
+    references: [users.id],
   }),
 }));
