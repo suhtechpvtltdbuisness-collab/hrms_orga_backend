@@ -42,5 +42,8 @@ class UserRepository {
       .limit(1);
     return result;
   }
+  getEmployeeByAdminId(id: number) {
+    const result = await db.select().from(users).leftJoin(Employee);
+  }
 }
 export default UserRepository;
