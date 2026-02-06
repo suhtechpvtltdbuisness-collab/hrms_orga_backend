@@ -42,8 +42,13 @@ class UserRepository {
       .limit(1);
     return result;
   }
-  getEmployeeByAdminId(id: number) {
-    const result = await db.select().from(users).leftJoin(Employee);
+  async getEmployeeByAdminId(id: number) {
+    const result = await db
+      .select()
+      .from(users)
+      .leftJoin(Employee, eq(Employee.adminId, users.id))
+      .where(eq(users.id, id));
+    return result;
   }
 }
 export default UserRepository;
