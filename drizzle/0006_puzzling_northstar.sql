@@ -1,0 +1,3 @@
+ALTER TABLE "designation" ALTER COLUMN "reporting_to" SET DATA TYPE integer USING reporting_to::integer;--> statement-breakpoint
+ALTER TABLE "designation" ADD COLUMN "name" varchar(255) NOT NULL;--> statement-breakpoint
+ALTER TABLE "designation" ADD CONSTRAINT "designation_reporting_to_users_id_fk" FOREIGN KEY ("reporting_to") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;

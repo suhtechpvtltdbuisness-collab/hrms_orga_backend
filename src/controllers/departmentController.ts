@@ -10,6 +10,16 @@ class DepartmentController {
     try {
       const user = res.locals.user;
       const data = req.body;
+
+      // Validate required fields
+      if (!data.name || !data.code) {
+        res.status(400).json({
+          success: false,
+          message: "Name and code are required fields",
+        });
+        return;
+      }
+
       const result = await this.departmentServices.createDepartment(data, user);
       res.status(201).json(result);
     } catch (error) {
@@ -30,6 +40,21 @@ class DepartmentController {
   async getAllDepartments(req: Request, res: Response, next: NextFunction) {
     try {
       const result = await this.departmentServices.getAllDepartments();
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getDepartmentsByAdminId(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const adminId = Number(req.params.adminId);
+      const result =
+        await this.departmentServices.getDepartmentsByAdminId(adminId);
       res.status(200).json(result);
     } catch (error) {
       next(error);

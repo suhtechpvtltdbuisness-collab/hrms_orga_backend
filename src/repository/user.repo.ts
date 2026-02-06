@@ -23,6 +23,14 @@ class UserRepository {
           adminId: user.id,
         })
         .returning();
+
+      // Remove password from response
+      const { password: _, ...userWithoutPassword } = insertedUsers[0];
+
+      return {
+        user: userWithoutPassword,
+        employee: employeeData[0],
+      };
     });
     return result;
   }
@@ -48,6 +56,18 @@ class UserRepository {
       .from(users)
       .leftJoin(Employee, eq(Employee.adminId, users.id))
       .where(eq(users.id, id));
+    return result;
+  }
+
+  async getAllEmployeesByAdminId(adminId: number) {
+    const result = await db
+      .select({
+        employee: Employee,
+        user: users,
+      })
+      .from(Employee)
+      .innerJoin(users, eq(Employee.userId, users.id))
+      .where(eq(Employee.adminId, adminId));
     return result;
   }
 }

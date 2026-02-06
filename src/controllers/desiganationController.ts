@@ -10,6 +10,13 @@ class DesignationController {
     try {
       const user = res.locals.user;
       const data = req.body;
+      if (!data.name || !data.type || !data.departmentId || !data.level) {
+        res.status(400).json({
+          success: false,
+          message: "Name, type, departmentId, and level are required fields",
+        });
+        return;
+      }
       const result = await this.designationServices.createDesignation(
         data,
         user,
@@ -49,6 +56,20 @@ class DesignationController {
         data,
         user,
       );
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+  async getDesignationsByAdminId(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const adminId = Number(req.params.adminId);
+      const result =
+        await this.designationServices.getDesignationsByAdminId(adminId);
       res.status(200).json(result);
     } catch (error) {
       next(error);

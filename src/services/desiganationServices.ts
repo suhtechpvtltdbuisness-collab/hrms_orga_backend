@@ -13,7 +13,18 @@ class DesignationServices {
     if (!currentUser.isAdmin) {
       throw new Error("Only admins can create designations");
     }
-    const result = await this.designationRepo.createDesignation(data);
+    const existingDesignation =
+      await this.designationRepo.getDesignationByDepartmentIdAndName(
+        data.departmentId as number,
+        data.name,
+      );
+    if (existingDesignation) {
+      throw new Error(
+        "Designation with the same name already exists in this department",
+      );
+    }
+    const newData = { ...data, createdBy: currentUser.id };
+    const result = await this.designationRepo.createDesignation(newData);
     return {
       message: "successfully created designation",
       success: true,
@@ -55,6 +66,14 @@ class DesignationServices {
     const result = await this.designationRepo.updateDesignation(id, data);
     return {
       message: "successfully updated designation",
+      success: true,
+      data: result,
+    };
+  }
+  async getDesignationsByAdminId(adminId: number) {
+    const result = await this.designationRepo.getDesignationsByAdminId(adminId);
+    return {
+      message: "successfully fetched designations by admin",
       success: true,
       data: result,
     };

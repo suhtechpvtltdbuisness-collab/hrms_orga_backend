@@ -34,5 +34,19 @@ class UserController {
       next(error);
     }
   }
+
+  async getAllEmployeesByAdminId(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const adminId = Number(req.params.adminId);
+      const result = await this.userServices.getAllEmployeesByAdminId(adminId);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 export default UserController;

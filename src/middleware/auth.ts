@@ -1,5 +1,8 @@
 import { Request, Response, NextFunction } from "express";
 import { verifyToken, TokenPayload } from "../utils/jwt.js";
+import { db } from "../db/connection.js";
+import { users } from "../db/schema.js";
+import { eq, and } from "drizzle-orm";
 
 // Extend Express Request type to include user
 declare global {
@@ -31,6 +34,23 @@ export const authenticate = async (
     try {
       const decoded = verifyToken(token);
       req.user = decoded;
+
+      // Fetch full user data from database
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(and(eq(users.id, decoded.userId), eq(users.isDeleted, false)))
+        .limit(1);
+
+      if (!user || !user.active) {
+        res.status(401).json({
+          success: false,
+          message: "User not found or inactive",
+        });
+        return;
+      }
+
+      res.locals.user = user;
       next();
     } catch (error) {
       res.status(401).json({

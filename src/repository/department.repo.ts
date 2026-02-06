@@ -23,8 +23,38 @@ class DepartmentRepository {
     return result[0];
   }
 
+  async findDepartmentByNameCodeAndAdmin(
+    name: string,
+    code: string,
+    adminId: number,
+  ) {
+    const result = await db
+      .select()
+      .from(department)
+      .where(
+        and(
+          eq(department.name, name),
+          eq(department.code, code),
+          eq(department.adminId, adminId),
+          eq(department.isDeleted, false),
+        ),
+      )
+      .limit(1);
+    return result[0];
+  }
+
   async getAllDepartments() {
     const result = await db.select().from(department);
+    return result;
+  }
+
+  async getDepartmentsByAdminId(adminId: number) {
+    const result = await db
+      .select()
+      .from(department)
+      .where(
+        and(eq(department.adminId, adminId), eq(department.isDeleted, false)),
+      );
     return result;
   }
 

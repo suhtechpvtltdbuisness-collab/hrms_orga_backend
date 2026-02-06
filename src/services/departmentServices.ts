@@ -12,6 +12,20 @@ class DepartmentServices {
     if (!currentUser.isAdmin) {
       throw new Error("Only admins can create departments");
     }
+
+    // Check for duplicate department
+    const existing = await this.departmentRepo.findDepartmentByNameCodeAndAdmin(
+      data.name,
+      data.code,
+      currentUser.id,
+    );
+
+    if (existing) {
+      throw new Error(
+        "Department with the same name and code already exists for this admin",
+      );
+    }
+
     const departmentData = {
       ...data,
       adminId: currentUser.id,
@@ -39,6 +53,15 @@ class DepartmentServices {
     const result = await this.departmentRepo.getAllDepartments();
     return {
       message: "successfully fetched departments",
+      success: true,
+      data: result,
+    };
+  }
+
+  async getDepartmentsByAdminId(adminId: number) {
+    const result = await this.departmentRepo.getDepartmentsByAdminId(adminId);
+    return {
+      message: "successfully fetched departments by admin",
       success: true,
       data: result,
     };
