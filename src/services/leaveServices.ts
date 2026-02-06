@@ -1,5 +1,7 @@
 import LeaveRepository from "../repository/leave.repo.js";
-import { leave, users } from "../db/schema.js";
+import { leave, users, Employee } from "../db/schema.js";
+import { db } from "../db/connection.js";
+import { eq } from "drizzle-orm";
 
 class LeaveServices {
   private leaveRepo: LeaveRepository;
@@ -18,6 +20,17 @@ class LeaveServices {
     // Validate required fields
     if (!data.empId || !data.type || !data.total) {
       throw new Error("Employee ID, leave type, and total days are required");
+    }
+
+    // Check if employee exists
+    const employee = await db
+      .select()
+      .from(Employee)
+      .where(eq(Employee.id, data.empId))
+      .limit(1);
+
+    if (!employee || employee.length === 0) {
+      throw new Error("Employee not found with ID: " + data.empId);
     }
 
     const leaveData = {
