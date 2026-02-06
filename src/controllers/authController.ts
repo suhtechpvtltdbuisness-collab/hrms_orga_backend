@@ -57,6 +57,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
         email,
         password: hashedPassword,
         type: "admin",
+        isAdmin: true,
         phone: phone || null,
         gender: gender || null,
         dob: dob || null,
@@ -101,17 +102,14 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       type: newUser.type,
     });
 
+    // Remove password from response
+    const { password: _, ...userWithoutPassword } = newUser;
+
     res.status(201).json({
       success: true,
       message: "User registered successfully",
       data: {
-        user: {
-          id: newUser.id,
-          name: newUser.name,
-          email: newUser.email,
-          type: newUser.type,
-          active: newUser.active,
-        },
+        user: userWithoutPassword,
         tokens,
       },
     });
@@ -181,18 +179,14 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       type: user.type,
     });
 
+    // Remove password from response
+    const { password: _, ...userWithoutPassword } = user;
+
     res.status(200).json({
       success: true,
       message: "Login successful",
       data: {
-        user: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          type: user.type,
-          active: user.active,
-
-        },
+        user: userWithoutPassword,
         tokens,
       },
     });
