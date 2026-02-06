@@ -119,7 +119,9 @@ export const department = pgTable("department", {
   head: varchar("head", { length: 255 }),
   location: varchar("location", { length: 255 }),
   description: text("description"),
-  parentId: varchar("parent_id", { length: 50 }),
+  adminId: integer("admin_id")
+    .notNull()
+    .references(() => users.id),
   status: boolean("status").default(true).notNull(),
   isDeleted: boolean("is_deleted").default(false).notNull(),
   createdBy: integer("created_by"),

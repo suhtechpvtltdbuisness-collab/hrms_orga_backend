@@ -12,7 +12,12 @@ class DepartmentServices {
     if (!currentUser.isAdmin) {
       throw new Error("Only admins can create departments");
     }
-    const result = await this.departmentRepo.createDepartment(data);
+    const departmentData = {
+      ...data,
+      adminId: currentUser.id,
+      createdBy: currentUser.id,
+    };
+    const result = await this.departmentRepo.createDepartment(departmentData);
     return {
       message: "successfully created department",
       success: true,
