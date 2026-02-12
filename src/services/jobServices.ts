@@ -26,18 +26,24 @@ class JobServices {
   }
 
   async getAllJobs(currentUser: typeof users.$inferSelect) {
-    if (!currentUser.isAdmin) {
-        const userAdmin=await 
+    let adminId = currentUser.id;
 
-    }   
-    const result = await this.jobRepo.getAllJobs(currentUser.);
+    if (!currentUser.isAdmin) {
+      const userAdmin = await this.userRepo.getuserAdminDetailsByUserId(
+        currentUser.id,
+      );
+      if (userAdmin.length > 0 && userAdmin[0].users) {
+        adminId = userAdmin[0].users.id;
+      }
+    }
+
+    const result = await this.jobRepo.getAllJobs(adminId);
     return {
       message: "Successfully fetched jobs",
       success: true,
       data: result,
     };
   }
-
 
   async getJobById(id: number, currentUser: typeof users.$inferSelect) {
     const result = await this.jobRepo.getJobById(id);
