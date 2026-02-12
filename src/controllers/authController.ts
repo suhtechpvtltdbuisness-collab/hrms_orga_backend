@@ -62,7 +62,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
         gender: gender || null,
         dob: dob || null,
         bloodGroup: bloodGroup || null,
-        maritalStatus: maritalStatus || null,
+        maritalStatus: maritalStatus !== undefined ? maritalStatus : false,
         address: address || null,
         aadharNo: aadharNo || null,
         pancardNo: pancardNo || null,

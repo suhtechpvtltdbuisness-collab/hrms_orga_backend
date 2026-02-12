@@ -55,6 +55,11 @@ export const planTypeEnum = pgEnum("plan_type", [
   "premium",
   "enterprise",
 ]);
+const employeeTypeEnum = pgEnum("employee_type", [
+  "full_time",
+  "part_time",
+  "intern",
+]);
 
 // Organization Table
 export const Plain = pgTable("plain", {
@@ -244,6 +249,57 @@ export const PlainPayment = pgTable("plain_payment", {
   paymentMode: paymentModeEnum("payment_mode").notNull(),
   totalAmount: decimal("total_amount", { precision: 15, scale: 2 }).notNull(),
   paymentId: varchar("payment_id", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const jobs = pgTable("jobs", {
+  id: serial("id").primaryKey(),
+  title: varchar("title", { length: 255 }).notNull(),
+  adminId: integer("admin_id")
+    .notNull()
+    .references(() => users.id),
+  employeeType: employeeTypeEnum("employee_type").notNull(),
+  description: text("description"),
+  requiredSkills: text("required_skills"),
+  location: varchar("location", { length: 255 }),
+  salaryRange: varchar("salary_range", { length: 100 }),
+  departmentId: integer("department_id").references(() => department.id),
+  designationId: integer("designation_id").references(() => designation.id),
+  isActive: boolean("is_active").default(true).notNull(),
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  createdBy: integer("created_by"),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const jobApplication = pgTable("job_application", {
+  id: serial("id").primaryKey(),
+  jobId: integer("job_id")
+    .notNull()
+    .references(() => jobs.id),
+  applicantName: varchar("applicant_name", { length: 255 }).notNull(),
+  applicantEmail: varchar("applicant_email", { length: 255 }).notNull(),
+  resume: text("resume"),
+  coverLetter: text("cover_letter"),
+  status: varchar("status", { length: 50 }).default("pending").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export const interview = pgTable("interview", {
+  id: serial("id").primaryKey(),
+  jobApplicationId: integer("job_application_id")
+    .notNull()
+    .references(() => jobApplication.id),
+  interviewerId: integer("interviewer_id")
+    .notNull()
+    .references(() => users.id),
+  scheduledAt: timestamp("scheduled_at").notNull(),
+  instruction: text("instruction"),
+  meetingLink: varchar("meeting_link", { length: 255 }),
+  status: varchar("status", { length: 50 }).default("scheduled").notNull(),
+  feedback: text("feedback"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
