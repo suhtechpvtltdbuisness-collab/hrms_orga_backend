@@ -55,7 +55,7 @@ export const planTypeEnum = pgEnum("plan_type", [
   "premium",
   "enterprise",
 ]);
-const employeeTypeEnum = pgEnum("employee_type", [
+export const employeeTypeEnum = pgEnum("employee_type", [
   "full_time",
   "part_time",
   "intern",
@@ -112,6 +112,67 @@ export const Employee = pgTable("employee", {
   userId: integer("user_id")
     .notNull()
     .references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Employment Table
+export const employment = pgTable("employment", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id")
+    .notNull()
+    .references(() => Employee.id),
+  departmentId: integer("department_id")
+    .notNull()
+    .references(() => department.id),
+  jobTitle: varchar("job_title", { length: 255 }),
+  subDepartment: varchar("sub_department", { length: 255 }),
+  reportingManager: integer("reporting_manager").references(() => users.id),
+  dateOfJoining: varchar("date_of_joining", { length: 50 }),
+  workLocation: varchar("work_location", { length: 255 }),
+  branch: varchar("branch", { length: 255 }),
+  prohibitionPeriod: varchar("prohibition_period", { length: 100 }),
+  confirmDate: varchar("confirm_date", { length: 50 }),
+  empStatus: boolean("emp_status").default(true),
+  prohibitionEnd: varchar("prohibition_end", { length: 50 }),
+  contractType: varchar("contract_type", { length: 100 }),
+  contractStart: varchar("contract_start", { length: 50 }),
+  contractEnd: varchar("contract_end", { length: 50 }),
+  contractPay: varchar("contract_pay", { length: 100 }),
+  contractDuration: varchar("contract_duration", { length: 100 }),
+  renewalStatus: boolean("renewal_status").default(false),
+  workMode: varchar("work_mode", { length: 100 }),
+  currentShift: integer("current_shift"),
+  shiftTiming: varchar("shift_timing", { length: 255 }),
+  assignedTemplate: varchar("assigned_template", { length: 255 }),
+  weeklyPattern: varchar("weekly_pattern", { length: 255 }),
+  overtime: varchar("overtime", { length: 255 }),
+  assignedShift: varchar("assigned_shift", { length: 255 }),
+  shiftStartTime: varchar("shift_start_time", { length: 50 }),
+  shiftEndTime: varchar("shift_end_time", { length: 50 }),
+  weeklyOff: varchar("weekly_off", { length: 255 }),
+  breakTiming: varchar("break_timing", { length: 255 }),
+  weeklySchedule: varchar("weekly_schedule", { length: 255 }),
+  workingHours: integer("working_hours"),
+  totalWeeklyHours: integer("total_weekly_hours"),
+  customScheduled: boolean("custom_scheduled").default(false),
+  flexibleHours: integer("flexible_hours"),
+  monthlyRosterCalendar: varchar("monthly_roster_calendar", { length: 255 }),
+  rotationShiftCycle: varchar("rotation_shift_cycle", { length: 255 }),
+  upcomingShiftCycle: varchar("upcoming_shift_cycle", { length: 255 }),
+  attendanceLinked: boolean("attendance_linked").default(false),
+  swapRequest: varchar("swap_request", { length: 255 }),
+  primaryRoles: varchar("primary_roles", { length: 255 }),
+  additionalRoles: varchar("additional_roles", { length: 255 }),
+  moduleAccess: varchar("module_access", { length: 255 }),
+  roleEffectiveFrom: varchar("role_effective_from", { length: 50 }),
+  level: integer("level"),
+  accessScope: varchar("access_scope", { length: 255 }),
+  approvalRight: boolean("approval_right").default(false),
+  specialPermission: varchar("special_permission", { length: 255 }),
+  dataVisibility: varchar("data_visibility", { length: 255 }),
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  createdBy: integer("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -361,6 +422,21 @@ export const trainingAndDevelopmentRelations = relations(
 export const logActivityRelations = relations(logActivity, ({ one }) => ({
   user: one(users, {
     fields: [logActivity.empId],
+    references: [users.id],
+  }),
+}));
+
+export const employmentRelations = relations(employment, ({ one }) => ({
+  employee: one(Employee, {
+    fields: [employment.employeeId],
+    references: [Employee.id],
+  }),
+  department: one(department, {
+    fields: [employment.departmentId],
+    references: [department.id],
+  }),
+  reportingManagerUser: one(users, {
+    fields: [employment.reportingManager],
     references: [users.id],
   }),
 }));

@@ -5,6 +5,7 @@ import desiganationRouter from "./router/desiganationRouter.js";
 import userRouter from "./router/userRouter.js";
 import payrollRouter from "./router/payrollRouter.js";
 import leaveRouter from "./router/leaveRouter.js";
+import employmentRouter from "./router/employmentRouter.js";
 
 const router = Router();
 
@@ -20,5 +21,6 @@ router.use("/designation", desiganationRouter);
 router.use("/users", userRouter);
 router.use("/payroll", payrollRouter);
 router.use("/leave", leaveRouter);
+router.use("/employment", employmentRouter);
 
 export default router;
