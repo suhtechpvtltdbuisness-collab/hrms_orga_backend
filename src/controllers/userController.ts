@@ -48,5 +48,19 @@ class UserController {
       next(error);
     }
   }
+
+  async getEmployeeDetailsByUserId(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const userId = Number(req.params.userId);
+      const result = await this.userServices.getEmployeeDetailsByUserId(userId);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 export default UserController;

@@ -1,5 +1,5 @@
 import { db } from "../db/connection.js";
-import { users, Employee } from "../db/schema.js";
+import { users, Employee, employment } from "../db/schema.js";
 import { eq } from "drizzle-orm";
 
 class UserRepository {
@@ -34,14 +34,6 @@ class UserRepository {
     });
     return result;
   }
-  async getUserById(id: number) {
-    const result = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, id))
-      .limit(1);
-    return result;
-  }
   async getuserAdminDetailsByUserId(id: number) {
     const result = await db
       .select()
@@ -51,6 +43,16 @@ class UserRepository {
       .limit(1);
     return result;
   }
+
+  async getUserById(id: number) {
+    const result = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, id))
+      .limit(1);
+    return result[0];
+  }
+
   async getEmployeeById(id: number) {
     const result = await db
       .select()
@@ -78,6 +80,21 @@ class UserRepository {
       .innerJoin(users, eq(Employee.userId, users.id))
       .where(eq(Employee.adminId, adminId));
     return result;
+  }
+
+  async getEmployeeDetailsByUserId(userId: number) {
+    const result = await db
+      .select({
+        employee: Employee,
+        user: users,
+        employment: employment,
+      })
+      .from(Employee)
+      .innerJoin(users, eq(Employee.userId, users.id))
+      .leftJoin(employment, eq(employment.employeeId, Employee.id))
+      .where(eq(Employee.userId, userId))
+      .limit(1);
+    return result[0];
   }
 }
 export default UserRepository;

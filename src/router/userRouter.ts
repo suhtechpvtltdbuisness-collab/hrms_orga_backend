@@ -11,6 +11,9 @@ userRouter.post("/", authenticate, authorizeAdmin, (req, res, next) =>
 userRouter.get("/employees/admin/:adminId", authenticate, (req, res, next) =>
   userController.getAllEmployeesByAdminId(req, res, next),
 );
+userRouter.get("/employee/user/:userId", authenticate, (req, res, next) =>
+  userController.getEmployeeDetailsByUserId(req, res, next),
+);
 userRouter.get("/:id", authenticate, (req, res, next) =>
   userController.getUserById(req, res, next),
 );

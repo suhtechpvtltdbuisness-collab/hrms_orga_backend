@@ -73,5 +73,17 @@ class UserServices {
       data: result,
     };
   }
+
+  async getEmployeeDetailsByUserId(userId: number) {
+    const result = await this.userRepo.getEmployeeDetailsByUserId(userId);
+    if (!result) {
+      throw new Error("Employee details not found");
+    }
+    return {
+      message: "successfully fetched employee details",
+      success: true,
+      data: result,
+    };
+  }
 }
 export default UserServices;
