@@ -74,9 +74,14 @@ class EmploymentController {
 
   async updateEmployment(req: Request, res: Response, next: NextFunction) {
     try {
-      const id = Number(req.params.id);
+      const userId = Number(req.params.id);
+      const currentUser = res.locals.user;
       const data = req.body;
-      const result = await this.employmentServices.updateEmployment(id, data);
+      const result = await this.employmentServices.updateEmploymentByUserId(
+        userId,
+        data,
+        currentUser,
+      );
       res.status(200).json(result);
     } catch (error) {
       next(error);
@@ -85,8 +90,12 @@ class EmploymentController {
 
   async deleteEmployment(req: Request, res: Response, next: NextFunction) {
     try {
-      const id = Number(req.params.id);
-      const result = await this.employmentServices.deleteEmployment(id);
+      const userId = Number(req.params.id);
+      const currentUser = res.locals.user;
+      const result = await this.employmentServices.deleteEmploymentByUserId(
+        userId,
+        currentUser,
+      );
       res.status(200).json(result);
     } catch (error) {
       next(error);

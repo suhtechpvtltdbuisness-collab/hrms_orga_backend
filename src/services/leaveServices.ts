@@ -18,8 +18,20 @@ class LeaveServices {
     }
 
     // Validate required fields
-    if (!data.empId || !data.type || !data.total) {
-      throw new Error("Employee ID, leave type, and total days are required");
+    if (!data.empId || !data.type) {
+      throw new Error("Employee ID and leave type are required");
+    }
+
+    // Validate that total leave equals sum of individual leaves
+    const sickLeave = data.sickLeave || 0;
+    const casualLeave = data.casualLeave || 0;
+    const paidLeave = data.paidLeave || 0;
+    const calculatedTotal = sickLeave + casualLeave + paidLeave;
+
+    if (data.total && data.total !== calculatedTotal) {
+      throw new Error(
+        `Total leave (${data.total}) must equal the sum of sick leave (${sickLeave}), casual leave (${casualLeave}), and paid leave (${paidLeave}). Expected total: ${calculatedTotal}`,
+      );
     }
 
     // Check if employee exists
@@ -35,6 +47,10 @@ class LeaveServices {
 
     const leaveData = {
       ...data,
+      total: calculatedTotal,
+      sickLeave,
+      casualLeave,
+      paidLeave,
       createdBy: currentUser.id,
     };
 
@@ -76,6 +92,15 @@ class LeaveServices {
     };
   }
 
+  async getLeavesByUserId(userId: number) {
+    const result = await this.leaveRepo.getLeavesByUserId(userId);
+    return {
+      message: "successfully fetched leaves by user",
+      success: true,
+      data: result,
+    };
+  }
+
   async updateLeave(
     id: number,
     data: typeof leave.$inferInsert,
@@ -98,6 +123,23 @@ class LeaveServices {
     };
   }
 
+  async updateLeaveByUserId(
+    userId: number,
+    data: typeof leave.$inferInsert,
+    currentUser: typeof users.$inferSelect,
+  ) {
+    if (!currentUser.isAdmin) {
+      throw new Error("Only admins can update leave records");
+    }
+
+    const result = await this.leaveRepo.updateLeaveByUserId(userId, data);
+    return {
+      message: "successfully updated leave",
+      success: true,
+      data: result,
+    };
+  }
+
   async deleteLeave(id: number, currentUser: typeof users.$inferSelect) {
     if (!currentUser.isAdmin) {
       throw new Error("Only admins can delete leave records");
@@ -109,6 +151,22 @@ class LeaveServices {
     }
 
     const result = await this.leaveRepo.deleteLeave(id);
+    return {
+      message: "successfully deleted leave",
+      success: true,
+      data: result,
+    };
+  }
+
+  async deleteLeaveByUserId(
+    userId: number,
+    currentUser: typeof users.$inferSelect,
+  ) {
+    if (!currentUser.isAdmin) {
+      throw new Error("Only admins can delete leave records");
+    }
+
+    const result = await this.leaveRepo.deleteLeaveByUserId(userId);
     return {
       message: "successfully deleted leave",
       success: true,

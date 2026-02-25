@@ -13,10 +13,10 @@ class LeaveController {
       const data = req.body;
 
       // Validate required fields
-      if (!data.empId || !data.type || !data.total) {
+      if (!data.empId || !data.type) {
         res.status(400).json({
           success: false,
-          message: "Employee ID, leave type, and total days are required",
+          message: "Employee ID and leave type are required",
         });
         return;
       }
@@ -57,12 +57,26 @@ class LeaveController {
     }
   }
 
+  async getLeavesByUserId(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = Number(req.params.userId);
+      const result = await this.leaveServices.getLeavesByUserId(userId);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async updateLeave(req: Request, res: Response, next: NextFunction) {
     try {
-      const id = Number(req.params.id);
+      const userId = Number(req.params.id);
       const data = req.body;
       const user = res.locals.user;
-      const result = await this.leaveServices.updateLeave(id, data, user);
+      const result = await this.leaveServices.updateLeaveByUserId(
+        userId,
+        data,
+        user,
+      );
       res.status(200).json(result);
     } catch (error) {
       next(error);
@@ -71,9 +85,9 @@ class LeaveController {
 
   async deleteLeave(req: Request, res: Response, next: NextFunction) {
     try {
-      const id = Number(req.params.id);
+      const userId = Number(req.params.id);
       const user = res.locals.user;
-      const result = await this.leaveServices.deleteLeave(id, user);
+      const result = await this.leaveServices.deleteLeaveByUserId(userId, user);
       res.status(200).json(result);
     } catch (error) {
       next(error);

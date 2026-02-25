@@ -178,13 +178,14 @@ export const employment = pgTable("employment", {
 });
 
 // Department Table
-export const department = pgTable("department", {
+export const department: any = pgTable("department", {
   id: serial("id").primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
   code: varchar("code", { length: 50 }).notNull(),
   head: varchar("head", { length: 255 }),
   location: varchar("location", { length: 255 }),
   description: text("description"),
+  parentId: integer("parent_id"),
   adminId: integer("admin_id")
     .notNull()
     .references(() => users.id),
@@ -215,10 +216,42 @@ export const designation = pgTable("designation", {
 // Document Table
 export const document = pgTable("document", {
   id: serial("id").primaryKey(),
-  empId: varchar("emp_id", { length: 100 }).notNull(),
-  aadhar: text("aadhar"),
-  pancard: text("pancard"),
-  offerLetter: text("offer_letter"),
+  empId: integer("emp_id")
+    .notNull()
+    .references(() => Employee.id),
+  type: varchar("type", { length: 100 }),
+  url: text("url"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Offboarding Table
+export const offboarding = pgTable("offboarding", {
+  id: serial("id").primaryKey(),
+  empId: integer("emp_id")
+    .notNull()
+    .references(() => Employee.id),
+  joiningDate: varchar("joining_date", { length: 50 }),
+  departmentId: integer("department_id").references(() => department.id),
+  managerId: integer("manager_id").references(() => Employee.id),
+  phone: varchar("phone", { length: 50 }),
+  location: varchar("location", { length: 255 }),
+  exitDate: varchar("exit_date", { length: 50 }),
+  type: varchar("type", { length: 100 }),
+  reason: text("reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Performance Table
+export const performance = pgTable("performance", {
+  id: serial("id").primaryKey(),
+  empId: integer("emp_id")
+    .notNull()
+    .references(() => Employee.id),
+  date: varchar("date", { length: 50 }),
+  rating: integer("rating"),
+  status: varchar("status", { length: 100 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -242,6 +275,12 @@ export const leave = pgTable("leave", {
   id: serial("id").primaryKey(),
   type: leaveTypeEnum("type").notNull(),
   total: integer("total").notNull(),
+  sickLeave: integer("sick_leave").default(0).notNull(),
+  casualLeave: integer("casual_leave").default(0).notNull(),
+  paidLeave: integer("paid_leave").default(0).notNull(),
+  sickLeaveTaken: integer("sick_leave_taken").default(0).notNull(),
+  casualLeaveTaken: integer("casual_leave_taken").default(0).notNull(),
+  paidLeaveTaken: integer("paid_leave_taken").default(0).notNull(),
   taken: integer("taken").default(0).notNull(),
   empId: integer("emp_id")
     .notNull()
@@ -378,9 +417,31 @@ export const designationRelations = relations(designation, ({ one }) => ({
 }));
 
 export const documentRelations = relations(document, ({ one }) => ({
-  user: one(users, {
+  employee: one(Employee, {
     fields: [document.empId],
-    references: [users.id],
+    references: [Employee.id],
+  }),
+}));
+
+export const offboardingRelations = relations(offboarding, ({ one }) => ({
+  employee: one(Employee, {
+    fields: [offboarding.empId],
+    references: [Employee.id],
+  }),
+  department: one(department, {
+    fields: [offboarding.departmentId],
+    references: [department.id],
+  }),
+  manager: one(Employee, {
+    fields: [offboarding.managerId],
+    references: [Employee.id],
+  }),
+}));
+
+export const performanceRelations = relations(performance, ({ one }) => ({
+  employee: one(Employee, {
+    fields: [performance.empId],
+    references: [Employee.id],
   }),
 }));
 

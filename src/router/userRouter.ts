@@ -20,5 +20,8 @@ userRouter.get("/:id", authenticate, (req, res, next) =>
 userRouter.get("/employee/:id", authenticate, (req, res, next) =>
   userController.getEmployeeById(req, res, next),
 );
+userRouter.put("/:id", authenticate, authorizeAdmin, (req, res, next) =>
+  userController.updateUser(req, res, next),
+);
 
 export default userRouter;

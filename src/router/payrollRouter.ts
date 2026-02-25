@@ -11,6 +11,9 @@ payrollRouter.post("/", authenticate, (req, res, next) =>
 payrollRouter.get("/employee/:empId", authenticate, (req, res, next) =>
   payrollController.getPayrollByEmployeeId(req, res, next),
 );
+payrollRouter.get("/user/:userId", authenticate, (req, res, next) =>
+  payrollController.getPayrollByUserId(req, res, next),
+);
 payrollRouter.get("/:id", authenticate, (req, res, next) =>
   payrollController.getPayrollById(req, res, next),
 );

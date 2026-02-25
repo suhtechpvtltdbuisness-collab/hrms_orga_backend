@@ -58,11 +58,55 @@ class EmploymentRepository {
     return result[0];
   }
 
+  async updateEmploymentByUserId(
+    userId: number,
+    data: Partial<typeof employment.$inferInsert>,
+  ) {
+    // First get the employee by userId
+    const { Employee } = await import("../db/schema.js");
+    const employeeResult = await this.db
+      .select()
+      .from(Employee)
+      .where(eq(Employee.userId, userId))
+      .limit(1);
+
+    if (!employeeResult[0]) {
+      throw new Error("Employee not found for this user");
+    }
+
+    const result = await this.db
+      .update(employment)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(employment.employeeId, employeeResult[0].id))
+      .returning();
+    return result[0];
+  }
+
   async deleteEmployment(id: number) {
     const result = await this.db
       .update(employment)
       .set({ isDeleted: true, updatedAt: new Date() })
       .where(eq(employment.id, id))
+      .returning();
+    return result[0];
+  }
+
+  async deleteEmploymentByUserId(userId: number) {
+    const { Employee } = await import("../db/schema.js");
+    const employeeResult = await this.db
+      .select()
+      .from(Employee)
+      .where(eq(Employee.userId, userId))
+      .limit(1);
+
+    if (!employeeResult[0]) {
+      throw new Error("Employee not found for this user");
+    }
+
+    const result = await this.db
+      .update(employment)
+      .set({ isDeleted: true, updatedAt: new Date() })
+      .where(eq(employment.employeeId, employeeResult[0].id))
       .returning();
     return result[0];
   }

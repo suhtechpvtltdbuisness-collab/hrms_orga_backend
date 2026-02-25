@@ -96,5 +96,21 @@ class UserRepository {
       .limit(1);
     return result[0];
   }
+
+  async updateUser(id: number, data: typeof users.$inferInsert) {
+    const result = await db
+      .update(users)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(users.id, id))
+      .returning();
+
+    if (result.length === 0) {
+      throw new Error("User not found");
+    }
+
+    // Remove password from response
+    const { password: _, ...userWithoutPassword } = result[0];
+    return userWithoutPassword;
+  }
 }
 export default UserRepository;

@@ -88,6 +88,26 @@ class EmploymentServices {
     };
   }
 
+  async updateEmploymentByUserId(
+    userId: number,
+    data: Partial<typeof employment.$inferInsert>,
+    currentUser: any,
+  ) {
+    if (!currentUser.isAdmin) {
+      throw new Error("Only admins can update employment records");
+    }
+
+    const result = await this.employmentRepo.updateEmploymentByUserId(
+      userId,
+      data,
+    );
+    return {
+      message: "Employment record updated successfully",
+      success: true,
+      data: result,
+    };
+  }
+
   async deleteEmployment(id: number) {
     // Check if employment exists
     const existingEmployment = await this.employmentRepo.getEmploymentById(id);
@@ -96,6 +116,19 @@ class EmploymentServices {
     }
 
     const result = await this.employmentRepo.deleteEmployment(id);
+    return {
+      message: "Employment record deleted successfully",
+      success: true,
+      data: result,
+    };
+  }
+
+  async deleteEmploymentByUserId(userId: number, currentUser: any) {
+    if (!currentUser.isAdmin) {
+      throw new Error("Only admins can delete employment records");
+    }
+
+    const result = await this.employmentRepo.deleteEmploymentByUserId(userId);
     return {
       message: "Employment record deleted successfully",
       success: true,

@@ -11,7 +11,7 @@ class PayrollServices {
     data: typeof payroll.$inferInsert,
     currentUser: typeof users.$inferSelect,
   ) {
-    // if (!currentUser.isAdmin) {
+    // if (!currentUser.isOrganizationAdmin) {
     //   throw new Error("Only admins can create payroll");
     // }
 
@@ -56,6 +56,15 @@ class PayrollServices {
     };
   }
 
+  async getPayrollByUserId(userId: number) {
+    const result = await this.payrollRepo.getPayrollByUserId(userId);
+    return {
+      message: "successfully fetched payroll by user",
+      success: true,
+      data: result,
+    };
+  }
+
   async getAllPayrolls() {
     const result = await this.payrollRepo.getAllPayrolls();
     return {
@@ -87,6 +96,23 @@ class PayrollServices {
     };
   }
 
+  async updatePayrollByUserId(
+    userId: number,
+    data: typeof payroll.$inferInsert,
+    currentUser: typeof users.$inferSelect,
+  ) {
+    if (!currentUser.isAdmin) {
+      throw new Error("Only admins can update payroll");
+    }
+
+    const result = await this.payrollRepo.updatePayrollByUserId(userId, data);
+    return {
+      message: "successfully updated payroll",
+      success: true,
+      data: result,
+    };
+  }
+
   async deletePayroll(id: number, currentUser: typeof users.$inferSelect) {
     if (!currentUser.isAdmin) {
       throw new Error("Only admins can delete payroll");
@@ -98,6 +124,22 @@ class PayrollServices {
     }
 
     const result = await this.payrollRepo.deletePayroll(id);
+    return {
+      message: "successfully deleted payroll",
+      success: true,
+      data: result,
+    };
+  }
+
+  async deletePayrollByUserId(
+    userId: number,
+    currentUser: typeof users.$inferSelect,
+  ) {
+    if (!currentUser.isAdmin) {
+      throw new Error("Only admins can delete payroll");
+    }
+
+    const result = await this.payrollRepo.deletePayrollByUserId(userId);
     return {
       message: "successfully deleted payroll",
       success: true,

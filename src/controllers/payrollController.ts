@@ -53,6 +53,16 @@ class PayrollController {
     }
   }
 
+  async getPayrollByUserId(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = Number(req.params.userId);
+      const result = await this.payrollServices.getPayrollByUserId(userId);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async getAllPayrolls(req: Request, res: Response, next: NextFunction) {
     try {
       const result = await this.payrollServices.getAllPayrolls();
@@ -64,10 +74,14 @@ class PayrollController {
 
   async updatePayroll(req: Request, res: Response, next: NextFunction) {
     try {
-      const id = Number(req.params.id);
+      const userId = Number(req.params.id);
       const data = req.body;
       const user = res.locals.user;
-      const result = await this.payrollServices.updatePayroll(id, data, user);
+      const result = await this.payrollServices.updatePayrollByUserId(
+        userId,
+        data,
+        user,
+      );
       res.status(200).json(result);
     } catch (error) {
       next(error);
@@ -76,9 +90,12 @@ class PayrollController {
 
   async deletePayroll(req: Request, res: Response, next: NextFunction) {
     try {
-      const id = Number(req.params.id);
+      const userId = Number(req.params.id);
       const user = res.locals.user;
-      const result = await this.payrollServices.deletePayroll(id, user);
+      const result = await this.payrollServices.deletePayrollByUserId(
+        userId,
+        user,
+      );
       res.status(200).json(result);
     } catch (error) {
       next(error);

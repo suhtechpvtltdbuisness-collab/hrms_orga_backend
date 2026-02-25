@@ -85,5 +85,39 @@ class UserServices {
       data: result,
     };
   }
+
+  async updateUser(
+    id: number,
+    data: typeof users.$inferInsert,
+    currentUser: typeof users.$inferSelect,
+  ) {
+    if (!currentUser.isAdmin) {
+      throw new Error("unauthorize, Only admins can update users");
+    }
+
+    // Check if user exists
+    const existingUser = await this.userRepo.getUserById(id);
+    if (!existingUser) {
+      throw new Error("User not found");
+    }
+
+    // Prevent updating isAdmin field
+    if (data.isAdmin !== undefined && data.isAdmin !== existingUser.isAdmin) {
+      throw new Error("Cannot modify admin status");
+    }
+
+    // Hash password if provided
+    if (data.password) {
+      const hashedPassword = await bcrypt.hash(data.password, 10);
+      data.password = hashedPassword;
+    }
+
+    const result = await this.userRepo.updateUser(id, data);
+    return {
+      message: "successfully updated user",
+      success: true,
+      data: result,
+    };
+  }
 }
 export default UserServices;

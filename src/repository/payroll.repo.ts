@@ -1,5 +1,5 @@
 import { eq, and } from "drizzle-orm";
-import { payroll } from "../db/schema.js";
+import { payroll, Employee } from "../db/schema.js";
 import { db } from "../db/connection.js";
 
 class PayrollRepository {
@@ -33,6 +33,18 @@ class PayrollRepository {
     return result;
   }
 
+  async getPayrollByUserId(userId: number) {
+    const result = await db
+      .select({
+        payroll: payroll,
+        employee: Employee,
+      })
+      .from(payroll)
+      .innerJoin(Employee, eq(payroll.empId, Employee.id))
+      .where(and(eq(Employee.userId, userId), eq(payroll.isDeleted, false)));
+    return result;
+  }
+
   async getAllPayrolls() {
     const result = await db
       .select()
@@ -50,11 +62,53 @@ class PayrollRepository {
     return result[0];
   }
 
+  async updatePayrollByUserId(
+    userId: number,
+    data: typeof payroll.$inferInsert,
+  ) {
+    // First get the employee by userId
+    const employeeResult = await db
+      .select()
+      .from(Employee)
+      .where(eq(Employee.userId, userId))
+      .limit(1);
+
+    if (!employeeResult[0]) {
+      throw new Error("Employee not found for this user");
+    }
+
+    const result = await db
+      .update(payroll)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(payroll.empId, employeeResult[0].id))
+      .returning();
+    return result[0];
+  }
+
   async deletePayroll(id: number) {
     const result = await db
       .update(payroll)
       .set({ isDeleted: true, updatedAt: new Date() })
       .where(eq(payroll.id, id))
+      .returning();
+    return result[0];
+  }
+
+  async deletePayrollByUserId(userId: number) {
+    const employeeResult = await db
+      .select()
+      .from(Employee)
+      .where(eq(Employee.userId, userId))
+      .limit(1);
+
+    if (!employeeResult[0]) {
+      throw new Error("Employee not found for this user");
+    }
+
+    const result = await db
+      .update(payroll)
+      .set({ isDeleted: true, updatedAt: new Date() })
+      .where(eq(payroll.empId, employeeResult[0].id))
       .returning();
     return result[0];
   }

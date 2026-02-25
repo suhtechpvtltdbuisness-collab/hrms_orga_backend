@@ -11,6 +11,9 @@ leaveRouter.post("/", authenticate, authorizeAdmin, (req, res, next) =>
 leaveRouter.get("/employee/:empId", authenticate, (req, res, next) =>
   leaveController.getLeavesByEmployeeId(req, res, next),
 );
+leaveRouter.get("/user/:userId", authenticate, (req, res, next) =>
+  leaveController.getLeavesByUserId(req, res, next),
+);
 leaveRouter.get("/:id", authenticate, (req, res, next) =>
   leaveController.getLeaveById(req, res, next),
 );
