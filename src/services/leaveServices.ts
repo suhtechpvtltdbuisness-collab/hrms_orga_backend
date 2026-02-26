@@ -26,7 +26,7 @@ class LeaveServices {
     const employee = await db
       .select()
       .from(Employee)
-      .where(eq(Employee.id, data.empId))
+      .where(eq(Employee.userId, data.empId))
       .limit(1);
 
     if (!employee || employee.length === 0) {
@@ -39,39 +39,12 @@ class LeaveServices {
     const paidLeave = data.paidLeave || 0;
     const calculatedTotal = sickLeave + casualLeave + paidLeave;
 
-    // Calculate total taken from individual taken leaves
-    const sickLeaveTaken = data.sickLeaveTaken || 0;
-    const casualLeaveTaken = data.casualLeaveTaken || 0;
-    const paidLeaveTaken = data.paidLeaveTaken || 0;
-    const calculatedTaken = sickLeaveTaken + casualLeaveTaken + paidLeaveTaken;
-
-    // Validate that taken leaves don't exceed allocated leaves
-    if (sickLeaveTaken > sickLeave) {
-      throw new Error(
-        `Sick leave taken (${sickLeaveTaken}) cannot exceed allocated sick leave (${sickLeave})`,
-      );
-    }
-    if (casualLeaveTaken > casualLeave) {
-      throw new Error(
-        `Casual leave taken (${casualLeaveTaken}) cannot exceed allocated casual leave (${casualLeave})`,
-      );
-    }
-    if (paidLeaveTaken > paidLeave) {
-      throw new Error(
-        `Paid leave taken (${paidLeaveTaken}) cannot exceed allocated paid leave (${paidLeave})`,
-      );
-    }
-
     const leaveData = {
       ...data,
       total: calculatedTotal,
       sickLeave,
       casualLeave,
       paidLeave,
-      sickLeaveTaken,
-      casualLeaveTaken,
-      paidLeaveTaken,
-      taken: calculatedTaken,
       createdBy: currentUser.id,
     };
 

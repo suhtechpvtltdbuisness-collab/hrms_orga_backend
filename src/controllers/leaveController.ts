@@ -13,7 +13,7 @@ class LeaveController {
       const data = req.body;
 
       // Validate required fields
-      if (!data.empId || !data.type) {
+      if (!data.empId) {
         res.status(400).json({
           success: false,
           message: "Employee ID and leave type are required",
