@@ -18,20 +18,8 @@ class LeaveServices {
     }
 
     // Validate required fields
-    if (!data.empId || !data.type) {
-      throw new Error("Employee ID and leave type are required");
-    }
-
-    // Validate that total leave equals sum of individual leaves
-    const sickLeave = data.sickLeave || 0;
-    const casualLeave = data.casualLeave || 0;
-    const paidLeave = data.paidLeave || 0;
-    const calculatedTotal = sickLeave + casualLeave + paidLeave;
-
-    if (data.total && data.total !== calculatedTotal) {
-      throw new Error(
-        `Total leave (${data.total}) must equal the sum of sick leave (${sickLeave}), casual leave (${casualLeave}), and paid leave (${paidLeave}). Expected total: ${calculatedTotal}`,
-      );
+    if (!data.empId) {
+      throw new Error("Employee ID is required");
     }
 
     // Check if employee exists
@@ -45,12 +33,45 @@ class LeaveServices {
       throw new Error("Employee not found with ID: " + data.empId);
     }
 
+    // Calculate total leave from individual leave types
+    const sickLeave = data.sickLeave || 0;
+    const casualLeave = data.casualLeave || 0;
+    const paidLeave = data.paidLeave || 0;
+    const calculatedTotal = sickLeave + casualLeave + paidLeave;
+
+    // Calculate total taken from individual taken leaves
+    const sickLeaveTaken = data.sickLeaveTaken || 0;
+    const casualLeaveTaken = data.casualLeaveTaken || 0;
+    const paidLeaveTaken = data.paidLeaveTaken || 0;
+    const calculatedTaken = sickLeaveTaken + casualLeaveTaken + paidLeaveTaken;
+
+    // Validate that taken leaves don't exceed allocated leaves
+    if (sickLeaveTaken > sickLeave) {
+      throw new Error(
+        `Sick leave taken (${sickLeaveTaken}) cannot exceed allocated sick leave (${sickLeave})`,
+      );
+    }
+    if (casualLeaveTaken > casualLeave) {
+      throw new Error(
+        `Casual leave taken (${casualLeaveTaken}) cannot exceed allocated casual leave (${casualLeave})`,
+      );
+    }
+    if (paidLeaveTaken > paidLeave) {
+      throw new Error(
+        `Paid leave taken (${paidLeaveTaken}) cannot exceed allocated paid leave (${paidLeave})`,
+      );
+    }
+
     const leaveData = {
       ...data,
       total: calculatedTotal,
       sickLeave,
       casualLeave,
       paidLeave,
+      sickLeaveTaken,
+      casualLeaveTaken,
+      paidLeaveTaken,
+      taken: calculatedTaken,
       createdBy: currentUser.id,
     };
 
@@ -115,7 +136,56 @@ class LeaveServices {
       throw new Error("Leave not found");
     }
 
-    const result = await this.leaveRepo.updateLeave(id, data);
+    // Recalculate totals if individual leave values are provided
+    const updateData: any = { ...data };
+
+    if (
+      data.sickLeave !== undefined ||
+      data.casualLeave !== undefined ||
+      data.paidLeave !== undefined
+    ) {
+      const sickLeave = data.sickLeave ?? existingLeave.sickLeave;
+      const casualLeave = data.casualLeave ?? existingLeave.casualLeave;
+      const paidLeave = data.paidLeave ?? existingLeave.paidLeave;
+      updateData.total = sickLeave + casualLeave + paidLeave;
+    }
+
+    if (
+      data.sickLeaveTaken !== undefined ||
+      data.casualLeaveTaken !== undefined ||
+      data.paidLeaveTaken !== undefined
+    ) {
+      const sickLeaveTaken =
+        data.sickLeaveTaken ?? existingLeave.sickLeaveTaken;
+      const casualLeaveTaken =
+        data.casualLeaveTaken ?? existingLeave.casualLeaveTaken;
+      const paidLeaveTaken =
+        data.paidLeaveTaken ?? existingLeave.paidLeaveTaken;
+      updateData.taken = sickLeaveTaken + casualLeaveTaken + paidLeaveTaken;
+
+      // Validate that taken leaves don't exceed allocated leaves
+      const sickLeave = updateData.sickLeave ?? existingLeave.sickLeave;
+      const casualLeave = updateData.casualLeave ?? existingLeave.casualLeave;
+      const paidLeave = updateData.paidLeave ?? existingLeave.paidLeave;
+
+      if (sickLeaveTaken > sickLeave) {
+        throw new Error(
+          `Sick leave taken (${sickLeaveTaken}) cannot exceed allocated sick leave (${sickLeave})`,
+        );
+      }
+      if (casualLeaveTaken > casualLeave) {
+        throw new Error(
+          `Casual leave taken (${casualLeaveTaken}) cannot exceed allocated casual leave (${casualLeave})`,
+        );
+      }
+      if (paidLeaveTaken > paidLeave) {
+        throw new Error(
+          `Paid leave taken (${paidLeaveTaken}) cannot exceed allocated paid leave (${paidLeave})`,
+        );
+      }
+    }
+
+    const result = await this.leaveRepo.updateLeave(id, updateData);
     return {
       message: "successfully updated leave",
       success: true,
@@ -132,7 +202,63 @@ class LeaveServices {
       throw new Error("Only admins can update leave records");
     }
 
-    const result = await this.leaveRepo.updateLeaveByUserId(userId, data);
+    // Get existing leave data for the user
+    const existingLeaves = await this.leaveRepo.getLeavesByUserId(userId);
+    if (!existingLeaves || existingLeaves.length === 0) {
+      throw new Error("Leave record not found for this user");
+    }
+    const existingLeave = existingLeaves[0].leave;
+
+    // Recalculate totals if individual leave values are provided
+    const updateData: any = { ...data };
+
+    if (
+      data.sickLeave !== undefined ||
+      data.casualLeave !== undefined ||
+      data.paidLeave !== undefined
+    ) {
+      const sickLeave = data.sickLeave ?? existingLeave.sickLeave;
+      const casualLeave = data.casualLeave ?? existingLeave.casualLeave;
+      const paidLeave = data.paidLeave ?? existingLeave.paidLeave;
+      updateData.total = sickLeave + casualLeave + paidLeave;
+    }
+
+    if (
+      data.sickLeaveTaken !== undefined ||
+      data.casualLeaveTaken !== undefined ||
+      data.paidLeaveTaken !== undefined
+    ) {
+      const sickLeaveTaken =
+        data.sickLeaveTaken ?? existingLeave.sickLeaveTaken;
+      const casualLeaveTaken =
+        data.casualLeaveTaken ?? existingLeave.casualLeaveTaken;
+      const paidLeaveTaken =
+        data.paidLeaveTaken ?? existingLeave.paidLeaveTaken;
+      updateData.taken = sickLeaveTaken + casualLeaveTaken + paidLeaveTaken;
+
+      // Validate that taken leaves don't exceed allocated leaves
+      const sickLeave = updateData.sickLeave ?? existingLeave.sickLeave;
+      const casualLeave = updateData.casualLeave ?? existingLeave.casualLeave;
+      const paidLeave = updateData.paidLeave ?? existingLeave.paidLeave;
+
+      if (sickLeaveTaken > sickLeave) {
+        throw new Error(
+          `Sick leave taken (${sickLeaveTaken}) cannot exceed allocated sick leave (${sickLeave})`,
+        );
+      }
+      if (casualLeaveTaken > casualLeave) {
+        throw new Error(
+          `Casual leave taken (${casualLeaveTaken}) cannot exceed allocated casual leave (${casualLeave})`,
+        );
+      }
+      if (paidLeaveTaken > paidLeave) {
+        throw new Error(
+          `Paid leave taken (${paidLeaveTaken}) cannot exceed allocated paid leave (${paidLeave})`,
+        );
+      }
+    }
+
+    const result = await this.leaveRepo.updateLeaveByUserId(userId, updateData);
     return {
       message: "successfully updated leave",
       success: true,

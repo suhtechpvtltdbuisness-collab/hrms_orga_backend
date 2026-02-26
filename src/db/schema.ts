@@ -273,7 +273,6 @@ export const attendance = pgTable("attendance", {
 // Leave Table
 export const leave = pgTable("leave", {
   id: serial("id").primaryKey(),
-  type: leaveTypeEnum("type").notNull(),
   total: integer("total").notNull(),
   sickLeave: integer("sick_leave").default(0).notNull(),
   casualLeave: integer("casual_leave").default(0).notNull(),
