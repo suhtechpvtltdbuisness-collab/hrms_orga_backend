@@ -111,6 +111,7 @@ export const Employee = pgTable("employee", {
     .references(() => users.id),
   userId: integer("user_id")
     .notNull()
+    .unique()
     .references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -121,7 +122,7 @@ export const employment = pgTable("employment", {
   id: serial("id").primaryKey(),
   employeeId: integer("employee_id")
     .notNull()
-    .references(() => Employee.id),
+    .references(() => Employee.userId),
   departmentId: integer("department_id")
     .notNull()
     .references(() => department.id),
@@ -218,7 +219,7 @@ export const document = pgTable("document", {
   id: serial("id").primaryKey(),
   empId: integer("emp_id")
     .notNull()
-    .references(() => Employee.id),
+    .references(() => Employee.userId),
   type: varchar("type", { length: 100 }),
   url: text("url"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -230,10 +231,10 @@ export const offboarding = pgTable("offboarding", {
   id: serial("id").primaryKey(),
   empId: integer("emp_id")
     .notNull()
-    .references(() => Employee.id),
+    .references(() => Employee.userId),
   joiningDate: varchar("joining_date", { length: 50 }),
   departmentId: integer("department_id").references(() => department.id),
-  managerId: integer("manager_id").references(() => Employee.id),
+  managerId: integer("manager_id").references(() => Employee.userId),
   phone: varchar("phone", { length: 50 }),
   location: varchar("location", { length: 255 }),
   exitDate: varchar("exit_date", { length: 50 }),
@@ -248,7 +249,7 @@ export const performance = pgTable("performance", {
   id: serial("id").primaryKey(),
   empId: integer("emp_id")
     .notNull()
-    .references(() => Employee.id),
+    .references(() => Employee.userId),
   date: varchar("date", { length: 50 }),
   rating: integer("rating"),
   status: varchar("status", { length: 100 }),
@@ -261,7 +262,7 @@ export const attendance = pgTable("attendance", {
   id: serial("id").primaryKey(),
   empId: integer("emp_id")
     .notNull()
-    .references(() => Employee.id),
+    .references(() => Employee.userId),
   markedBy: integer("marked_by")
     .notNull()
     .references(() => users.id),
@@ -283,7 +284,7 @@ export const leave = pgTable("leave", {
   taken: integer("taken").default(0).notNull(),
   empId: integer("emp_id")
     .notNull()
-    .references(() => Employee.id),
+    .references(() => Employee.userId),
   createdBy: integer("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -305,7 +306,7 @@ export const payroll = pgTable("payroll", {
   specialPay: decimal("special_pay", { precision: 15, scale: 2 }),
   empId: integer("emp_id")
     .notNull()
-    .references(() => Employee.id),
+    .references(() => Employee.userId),
   isDeleted: boolean("is_deleted").default(false).notNull(),
   createdBy: integer("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -317,7 +318,7 @@ export const trainingAndDevelopment = pgTable("training_and_development", {
   id: serial("id").primaryKey(),
   empId: integer("emp_id")
     .notNull()
-    .references(() => Employee.id),
+    .references(() => Employee.userId),
   type: varchar("type", { length: 100 }),
   videos: text("videos"),
   docs: text("docs"),
@@ -418,14 +419,14 @@ export const designationRelations = relations(designation, ({ one }) => ({
 export const documentRelations = relations(document, ({ one }) => ({
   employee: one(Employee, {
     fields: [document.empId],
-    references: [Employee.id],
+    references: [Employee.userId],
   }),
 }));
 
 export const offboardingRelations = relations(offboarding, ({ one }) => ({
   employee: one(Employee, {
     fields: [offboarding.empId],
-    references: [Employee.id],
+    references: [Employee.userId],
   }),
   department: one(department, {
     fields: [offboarding.departmentId],
@@ -433,28 +434,28 @@ export const offboardingRelations = relations(offboarding, ({ one }) => ({
   }),
   manager: one(Employee, {
     fields: [offboarding.managerId],
-    references: [Employee.id],
+    references: [Employee.userId],
   }),
 }));
 
 export const performanceRelations = relations(performance, ({ one }) => ({
   employee: one(Employee, {
     fields: [performance.empId],
-    references: [Employee.id],
+    references: [Employee.userId],
   }),
 }));
 
 export const attendanceRelations = relations(attendance, ({ one }) => ({
   user: one(Employee, {
     fields: [attendance.empId],
-    references: [Employee.id],
+    references: [Employee.userId],
   }),
 }));
 
 export const leaveRelations = relations(leave, ({ one }) => ({
   user: one(Employee, {
     fields: [leave.empId],
-    references: [Employee.id],
+    references: [Employee.userId],
   }),
 }));
 
@@ -465,7 +466,7 @@ export const payrollRelations = relations(payroll, ({ one }) => ({
   }),
   user: one(Employee, {
     fields: [payroll.empId],
-    references: [Employee.id],
+    references: [Employee.userId],
   }),
 }));
 
@@ -474,7 +475,7 @@ export const trainingAndDevelopmentRelations = relations(
   ({ one }) => ({
     user: one(Employee, {
       fields: [trainingAndDevelopment.empId],
-      references: [Employee.id],
+      references: [Employee.userId],
     }),
   }),
 );
@@ -489,7 +490,7 @@ export const logActivityRelations = relations(logActivity, ({ one }) => ({
 export const employmentRelations = relations(employment, ({ one }) => ({
   employee: one(Employee, {
     fields: [employment.employeeId],
-    references: [Employee.id],
+    references: [Employee.userId],
   }),
   department: one(department, {
     fields: [employment.departmentId],

@@ -16,9 +16,10 @@ export class DocumentService {
       throw new Error("Only admins can create documents");
     }
 
+    // Note: empId now expects userId (from users table)
     // Validate required fields
     if (!data.empId) {
-      throw new Error("Employee ID is required");
+      throw new Error("User ID (empId) is required");
     }
 
     return await this.documentRepo.createDocument(data);

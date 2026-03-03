@@ -16,9 +16,10 @@ export class OffboardingService {
       throw new Error("Only admins can create offboarding records");
     }
 
+    // Note: empId and managerId now expect userId (from users table)
     // Validate required fields
     if (!data.empId) {
-      throw new Error("Employee ID is required");
+      throw new Error("User ID (empId) is required");
     }
 
     return await this.offboardingRepo.createOffboarding(data);

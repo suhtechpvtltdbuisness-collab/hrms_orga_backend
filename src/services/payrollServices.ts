@@ -15,10 +15,11 @@ class PayrollServices {
     //   throw new Error("Only admins can create payroll");
     // }
 
+    // Note: empId now expects userId (from users table)
     // Validate required fields
     if (!data.empId || !data.ctc || !data.monthlyGross || !data.monthlyPay) {
       throw new Error(
-        "Employee ID, CTC, monthly gross, and monthly pay are required",
+        "User ID (empId), CTC, monthly gross, and monthly pay are required",
       );
     }
 

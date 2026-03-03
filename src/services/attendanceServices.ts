@@ -16,9 +16,10 @@ export class AttendanceService {
       throw new Error("Only admins can create attendance records");
     }
 
+    // Note: empId now expects userId (from users table)
     // Validate required fields
     if (!data.empId || !data.markedBy) {
-      throw new Error("Employee ID and markedBy are required");
+      throw new Error("User ID (empId) and markedBy are required");
     }
 
     const attendanceData = {

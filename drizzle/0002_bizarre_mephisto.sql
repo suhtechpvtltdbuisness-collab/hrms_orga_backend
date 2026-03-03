@@ -1,1 +1,0 @@
-CREATE TYPE "public"."plan_type" AS ENUM('free_trial', 'basic', 'premium', 'enterprise');

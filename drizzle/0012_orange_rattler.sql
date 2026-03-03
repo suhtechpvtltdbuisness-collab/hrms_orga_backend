@@ -1,1 +1,0 @@
-ALTER TABLE "leave" DROP COLUMN "type";

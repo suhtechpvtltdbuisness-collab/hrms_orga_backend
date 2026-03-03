@@ -11,9 +11,10 @@ class EmploymentServices {
     data: typeof employment.$inferInsert,
     currentUser: any,
   ) {
+    // Note: employeeId now expects userId (from users table)
     // Validate required fields
     if (!data.employeeId || !data.departmentId) {
-      throw new Error("Employee ID and Department ID are required");
+      throw new Error("User ID (employeeId) and Department ID are required");
     }
 
     const employmentData = {

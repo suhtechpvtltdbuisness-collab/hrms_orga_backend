@@ -17,12 +17,13 @@ class LeaveServices {
       throw new Error("Only admins can create leave records");
     }
 
+    // Note: empId now expects userId (from users table)
     // Validate required fields
     if (!data.empId) {
-      throw new Error("Employee ID is required");
+      throw new Error("User ID (empId) is required");
     }
 
-    // Check if employee exists
+    // Check if employee exists with this userId
     const employee = await db
       .select()
       .from(Employee)
@@ -30,7 +31,7 @@ class LeaveServices {
       .limit(1);
 
     if (!employee || employee.length === 0) {
-      throw new Error("Employee not found with ID: " + data.empId);
+      throw new Error("Employee not found with user ID: " + data.empId);
     }
 
     // Calculate total leave from individual leave types
@@ -39,12 +40,39 @@ class LeaveServices {
     const paidLeave = data.paidLeave || 0;
     const calculatedTotal = sickLeave + casualLeave + paidLeave;
 
+    // Calculate total taken from individual taken leaves
+    const sickLeaveTaken = data.sickLeaveTaken || 0;
+    const casualLeaveTaken = data.casualLeaveTaken || 0;
+    const paidLeaveTaken = data.paidLeaveTaken || 0;
+    const calculatedTaken = sickLeaveTaken + casualLeaveTaken + paidLeaveTaken;
+
+    // Validate that taken leaves don't exceed allocated leaves
+    if (sickLeaveTaken > sickLeave) {
+      throw new Error(
+        `Sick leave taken (${sickLeaveTaken}) cannot exceed allocated sick leave (${sickLeave})`,
+      );
+    }
+    if (casualLeaveTaken > casualLeave) {
+      throw new Error(
+        `Casual leave taken (${casualLeaveTaken}) cannot exceed allocated casual leave (${casualLeave})`,
+      );
+    }
+    if (paidLeaveTaken > paidLeave) {
+      throw new Error(
+        `Paid leave taken (${paidLeaveTaken}) cannot exceed allocated paid leave (${paidLeave})`,
+      );
+    }
+
     const leaveData = {
       ...data,
       total: calculatedTotal,
       sickLeave,
       casualLeave,
       paidLeave,
+      sickLeaveTaken,
+      casualLeaveTaken,
+      paidLeaveTaken,
+      taken: calculatedTaken,
       createdBy: currentUser.id,
     };
 
