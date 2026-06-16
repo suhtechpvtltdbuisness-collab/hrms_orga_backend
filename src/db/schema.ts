@@ -290,6 +290,39 @@ export const attendance = pgTable(
   (table) => [unique().on(table.empId, table.attendanceDate)],
 );
 
+// Shift Type Table
+export const shiftType = pgTable("shift_type", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  startTime: varchar("start_time", { length: 20 }).notNull(),
+  endTime: varchar("end_time", { length: 20 }).notNull(),
+  holidayList: varchar("holiday_list", { length: 50 }),
+  enableAutoAttendance: boolean("enable_auto_attendance").default(false).notNull(),
+  determineCheckinCheckout: varchar("determine_checkin_checkout", { length: 255 }),
+  workingHoursCalculation: varchar("working_hours_calculation", { length: 255 }),
+  beginCheckinBefore: integer("begin_checkin_before"),
+  allowCheckoutAfter: integer("allow_checkout_after"),
+  workingHoursThresholdHalfDay: varchar("working_hours_threshold_half_day", {
+    length: 20,
+  }),
+  workingHoursThresholdAbsent: varchar("working_hours_threshold_absent", {
+    length: 20,
+  }),
+  processAttendanceAfter: varchar("process_attendance_after", { length: 50 }),
+  lastSyncOfCheckin: varchar("last_sync_of_checkin", { length: 50 }),
+  enableEntryGracePeriod: boolean("enable_entry_grace_period")
+    .default(false)
+    .notNull(),
+  lateEntryGracePeriod: integer("late_entry_grace_period"),
+  enableExitGracePeriod: boolean("enable_exit_grace_period")
+    .default(false)
+    .notNull(),
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Leave Table
 export const leave = pgTable("leave", {
   id: serial("id").primaryKey(),
