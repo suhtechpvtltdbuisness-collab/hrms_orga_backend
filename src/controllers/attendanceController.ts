@@ -15,14 +15,83 @@ export const createAttendance = async (req: Request, res: Response) => {
   }
 };
 
+export const getNextSeries = async (req: Request, res: Response) => {
+  try {
+    const result = await attendanceService.getNextSeries(res.locals.user);
+    res.json(result);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+export const getEmployeeAttendanceInfo = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const info = await attendanceService.getEmployeeAttendanceInfo(
+      parseInt(req.params.empId as string),
+      res.locals.user,
+    );
+    res.json(info);
+  } catch (error: any) {
+    res.status(404).json({ error: error.message });
+  }
+};
+
 export const getAllAttendances = async (req: Request, res: Response) => {
   try {
+    const filters = {
+      employeeName: req.query.employeeName as string | undefined,
+      leaveType: req.query.leaveType as string | undefined,
+      month: req.query.month as string | undefined,
+    };
     const attendances = await attendanceService.getAllAttendances(
       res.locals.user,
+      filters,
     );
     res.json(attendances);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
+  }
+};
+
+export const getUnmarkedDates = async (req: Request, res: Response) => {
+  try {
+    const empId = parseInt(req.query.empId as string);
+    const month = req.query.month as string;
+    const result = await attendanceService.getUnmarkedDates(
+      empId,
+      month,
+      res.locals.user,
+    );
+    res.json(result);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+export const markAttendanceBulk = async (req: Request, res: Response) => {
+  try {
+    const attendance = await attendanceService.markAttendanceBulk(
+      req.body,
+      res.locals.user,
+    );
+    res.status(201).json(attendance);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+export const markSelfAttendance = async (req: Request, res: Response) => {
+  try {
+    const attendance = await attendanceService.markSelfAttendance(
+      req.body,
+      res.locals.user,
+    );
+    res.status(201).json(attendance);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
   }
 };
 
@@ -43,9 +112,11 @@ export const getAttendancesByEmployeeId = async (
   res: Response,
 ) => {
   try {
+    const month = req.query.month as string | undefined;
     const attendances = await attendanceService.getAttendancesByEmployeeId(
       parseInt(req.params.empId as string),
       res.locals.user,
+      month,
     );
     res.json(attendances);
   } catch (error: any) {
@@ -55,9 +126,9 @@ export const getAttendancesByEmployeeId = async (
 
 export const updateAttendance = async (req: Request, res: Response) => {
   try {
-    const userId = parseInt(req.params.id as string);
-    const attendance = await attendanceService.updateAttendanceByUserId(
-      userId,
+    const id = parseInt(req.params.id as string);
+    const attendance = await attendanceService.updateAttendance(
+      id,
       req.body,
       res.locals.user,
     );
@@ -69,8 +140,8 @@ export const updateAttendance = async (req: Request, res: Response) => {
 
 export const deleteAttendance = async (req: Request, res: Response) => {
   try {
-    const userId = parseInt(req.params.id as string);
-    await attendanceService.deleteAttendanceByUserId(userId, res.locals.user);
+    const id = parseInt(req.params.id as string);
+    await attendanceService.deleteAttendance(id, res.locals.user);
     res.status(204).send();
   } catch (error: any) {
     res.status(400).json({ error: error.message });
