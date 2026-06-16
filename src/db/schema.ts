@@ -68,6 +68,11 @@ export const attendanceStatusEnum = pgEnum("attendance_status", [
   "half_day",
   "on_leave",
 ]);
+export const shiftRequestStatusEnum = pgEnum("shift_request_status", [
+  "submitted",
+  "approved",
+  "rejected",
+]);
 
 // Organization Table
 export const Plain = pgTable("plain", {
@@ -319,6 +324,27 @@ export const shiftType = pgTable("shift_type", {
     .notNull(),
   isDeleted: boolean("is_deleted").default(false).notNull(),
   createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Shift Request Table
+export const shiftRequest = pgTable("shift_request", {
+  id: serial("id").primaryKey(),
+  empId: integer("emp_id")
+    .notNull()
+    .references(() => Employee.userId),
+  shiftTypeId: integer("shift_type_id")
+    .notNull()
+    .references(() => shiftType.id),
+  fromDate: date("from_date").notNull(),
+  toDate: date("to_date").notNull(),
+  comment: text("comment"),
+  status: shiftRequestStatusEnum("status").default("submitted").notNull(),
+  reviewedBy: integer("reviewed_by").references(() => users.id),
+  reviewedAt: timestamp("reviewed_at"),
+  rejectionReason: text("rejection_reason"),
+  isDeleted: boolean("is_deleted").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

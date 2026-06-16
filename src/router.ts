@@ -12,6 +12,7 @@ import offboardingRouter from "./router/offboardingRouter.js";
 import performanceRouter from "./router/performanceRouter.js";
 import attendanceRouter from "./router/attendanceRouter.js";
 import shiftTypeRouter from "./router/shiftTypeRouter.js";
+import shiftRequestRouter from "./router/shiftRequestRouter.js";
 import trainingRouter from "./router/trainingRouter.js";
 
 const router = Router();
@@ -35,6 +36,7 @@ router.use("/offboarding", offboardingRouter);
 router.use("/performance", performanceRouter);
 router.use("/attendance", attendanceRouter);
 router.use("/shift-types", shiftTypeRouter);
+router.use("/shift-requests", shiftRequestRouter);
 router.use("/training", trainingRouter);
 
 export default router;
