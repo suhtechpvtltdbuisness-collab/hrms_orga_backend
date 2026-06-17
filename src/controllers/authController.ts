@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import { db } from "../db/connection.js";
 import { users, Plain } from "../db/schema.js";
 import { generateTokens, verifyToken } from "../utils/jwt.js";
+import { setAuthCookies, clearAuthCookies } from "../utils/authCookies.js";
 import { eq, and } from "drizzle-orm";
 
 // Register new user (admin only)
@@ -102,6 +103,8 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       type: newUser.type,
     });
 
+    setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
+
     // Remove password from response
     const { password: _, ...userWithoutPassword } = newUser;
 
@@ -179,6 +182,8 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       type: user.type,
     });
 
+    setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
+
     // Remove password from response
     const { password: _, ...userWithoutPassword } = user;
 
@@ -203,13 +208,11 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 // Logout user (client-side token removal, but included for completeness)
 export const logout = async (req: Request, res: Response): Promise<void> => {
   try {
-    // In a JWT-based system, logout is typically handled client-side by removing the token
-    // However, you can implement token blacklisting here if needed
+    clearAuthCookies(res);
 
     res.status(200).json({
       success: true,
-      message:
-        "Logout successful. Please remove the token from client storage.",
+      message: "Logout successful",
     });
   } catch (error) {
     console.error("Logout error:", error);
@@ -227,9 +230,10 @@ export const refreshToken = async (
   res: Response,
 ): Promise<void> => {
   try {
-    const { refreshToken } = req.body;
+    const refreshTokenValue =
+      req.cookies?.refreshToken || req.body.refreshToken;
 
-    if (!refreshToken) {
+    if (!refreshTokenValue) {
       res.status(400).json({
         success: false,
         message: "Refresh token is required",
@@ -238,15 +242,15 @@ export const refreshToken = async (
     }
 
     try {
-      // Verify refresh token
-      const decoded = verifyToken(refreshToken);
+      const decoded = verifyToken(refreshTokenValue);
 
-      // Generate new tokens
       const tokens = generateTokens({
         userId: decoded.userId,
         email: decoded.email,
         type: decoded.type,
       });
+
+      setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
 
       res.status(200).json({
         success: true,

@@ -4,7 +4,6 @@ import { db } from "../db/connection.js";
 import { users } from "../db/schema.js";
 import { eq, and } from "drizzle-orm";
 
-// Extend Express Request type to include user
 declare global {
   namespace Express {
     interface Request {
@@ -13,15 +12,28 @@ declare global {
   }
 }
 
+export const extractAccessToken = (req: Request): string | undefined => {
+  if (req.cookies?.accessToken) {
+    return req.cookies.accessToken;
+  }
+
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith("Bearer ")) {
+    return authHeader.substring(7);
+  }
+
+  return undefined;
+};
+
 export const authenticate = async (
   req: Request,
   res: Response,
   next: NextFunction,
 ): Promise<void> => {
   try {
-    const authHeader = req.headers.authorization;
+    const token = extractAccessToken(req);
 
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    if (!token) {
       res.status(401).json({
         success: false,
         message: "Access token is missing or invalid",
@@ -29,13 +41,10 @@ export const authenticate = async (
       return;
     }
 
-    const token = authHeader.substring(7);
-
     try {
       const decoded = verifyToken(token);
       req.user = decoded;
 
-      // Fetch full user data from database
       const [user] = await db
         .select()
         .from(users)

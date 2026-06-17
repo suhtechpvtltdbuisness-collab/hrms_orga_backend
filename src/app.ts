@@ -1,8 +1,38 @@
 import express from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import router from "./router.js";
+
 const app = express();
-app.use(cors());
+
+const allowedOrigins = [
+  "https://suhtech.store",
+  "https://www.suhtech.store",
+  "https://admin.suhtech.store",
+  "http://localhost:5173",
+  "http://localhost:3000",
+  "http://localhost:4173",
+  ...(process.env.CORS_ORIGINS?.split(",").map((o) => o.trim()) || []),
+];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (
+        !origin ||
+        allowedOrigins.includes(origin) ||
+        process.env.NODE_ENV !== "production"
+      ) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error(`Origin ${origin} not allowed by CORS`));
+    },
+    credentials: true,
+  }),
+);
+
+app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(router);

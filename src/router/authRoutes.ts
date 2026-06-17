@@ -15,8 +15,9 @@ authRouter.post("/register", register);
 authRouter.post("/login", login);
 authRouter.post("/refresh-token", refreshToken);
 
+authRouter.post("/logout", logout);
+
 // Protected routes
-authRouter.post("/logout", authenticate, logout);
 authRouter.get("/profile", authenticate, getProfile);
 
 export default authRouter;
