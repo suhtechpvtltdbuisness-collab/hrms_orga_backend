@@ -1,6 +1,7 @@
 import UserRepository from "../repository/user.repo.js";
 import { users } from "../db/schema.js";
 import bcrypt from "bcrypt";
+import { subscriptionService } from "./subscriptionServices.js";
 
 class UserServices {
   private userRepo: UserRepository;
@@ -26,6 +27,8 @@ class UserServices {
     if (data.type !== "employee") {
       throw new Error("Only employee users can be created, update type");
     }
+
+    await subscriptionService.assertCanAddEmployee(currentUser.id);
 
     // Hash password
     const hashedPassword = await bcrypt.hash(data.password, 10);

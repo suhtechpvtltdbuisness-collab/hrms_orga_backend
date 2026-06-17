@@ -53,6 +53,7 @@ export const designationTypeEnum = pgEnum("designation_type", [
 ]);
 export const planTypeEnum = pgEnum("plan_type", [
   "free_trial",
+  "starter_pack",
   "basic",
   "premium",
   "enterprise",
@@ -82,11 +83,15 @@ export const Plain = pgTable("plain", {
     .references(() => users.id),
   price: doublePrecision("price").notNull(),
   type: organizationTypeEnum("type").notNull(),
+  planType: planTypeEnum("plan_type").default("free_trial").notNull(),
+  maxEmployees: integer("max_employees").default(4).notNull(),
   active: boolean("active").default(true).notNull(),
   isDeleted: boolean("is_deleted").default(false).notNull(),
   module: moduleEnum("module").notNull(),
   expired: varchar("expired", { length: 50 }),
   purchaseDate: varchar("purchase_date", { length: 50 }),
+  razorpaySubscriptionId: varchar("razorpay_subscription_id", { length: 255 }),
+  razorpayPlanId: varchar("razorpay_plan_id", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

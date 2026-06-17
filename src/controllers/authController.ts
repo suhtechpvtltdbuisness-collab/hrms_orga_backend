@@ -1,7 +1,8 @@
 import { Request, Response } from "express";
 import bcrypt from "bcrypt";
 import { db } from "../db/connection.js";
-import { users, Plain } from "../db/schema.js";
+import { users } from "../db/schema.js";
+import { subscriptionService } from "../services/subscriptionServices.js";
 import { generateTokens, verifyToken } from "../utils/jwt.js";
 import { setAuthCookies, clearAuthCookies } from "../utils/authCookies.js";
 import { eq, and } from "drizzle-orm";
@@ -72,30 +73,6 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       })
       .returning();
 
-    // Check if there's any plan data for this user
-    const existingPlan = await db
-      .select()
-      .from(Plain)
-      .where(and(eq(Plain.userId, newUser.id), eq(Plain.isDeleted, false)))
-      .limit(1);
-
-    // If no plan exists, create a free trial plan
-    if (existingPlan.length === 0) {
-      const trialExpiry = new Date();
-      trialExpiry.setDate(trialExpiry.getDate() + 30); // 30 days trial
-
-      await db.insert(Plain).values({
-        userId: newUser.id,
-        type: "startup",
-        price: 0,
-        module: "hrms",
-        active: true,
-        isDeleted: false,
-        expired: trialExpiry.toISOString(),
-        purchaseDate: new Date().toISOString(),
-      });
-    }
-
     // Generate tokens
     const tokens = generateTokens({
       userId: newUser.id,
@@ -104,6 +81,10 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     });
 
     setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
+
+    const subscription = await subscriptionService.getSubscriptionSummary(
+      newUser.id,
+    );
 
     // Remove password from response
     const { password: _, ...userWithoutPassword } = newUser;
@@ -114,6 +95,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       data: {
         user: userWithoutPassword,
         tokens,
+        subscription,
       },
     });
   } catch (error) {
@@ -184,6 +166,10 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 
     setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
 
+    const subscription = await subscriptionService.getSubscriptionSummary(
+      user.id,
+    );
+
     // Remove password from response
     const { password: _, ...userWithoutPassword } = user;
 
@@ -193,6 +179,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       data: {
         user: userWithoutPassword,
         tokens,
+        subscription,
       },
     });
   } catch (error) {
@@ -304,12 +291,9 @@ export const getProfile = async (
       return;
     }
 
-    // Get user's plan
-    const [userPlan] = await db
-      .select()
-      .from(Plain)
-      .where(and(eq(Plain.userId, user.id), eq(Plain.isDeleted, false)))
-      .limit(1);
+    const subscription = await subscriptionService.getSubscriptionSummary(
+      user.id,
+    );
 
     res.status(200).json({
       success: true,
@@ -327,7 +311,8 @@ export const getProfile = async (
           address: user.address,
           active: user.active,
         },
-        plan: userPlan || null,
+        subscription,
+        plan: subscription.plan,
       },
     });
   } catch (error) {

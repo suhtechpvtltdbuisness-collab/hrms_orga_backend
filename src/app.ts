@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import router from "./router.js";
+import { handleRazorpayWebhook } from "./controllers/subscriptionController.js";
 
 const app = express();
 
@@ -33,6 +34,13 @@ app.use(
 );
 
 app.use(cookieParser());
+
+app.post(
+  "/subscriptions/webhook",
+  express.raw({ type: "application/json" }),
+  handleRazorpayWebhook,
+);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(router);

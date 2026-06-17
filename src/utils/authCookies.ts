@@ -4,12 +4,14 @@ const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 export const getAuthCookieOptions = (): CookieOptions => {
+  const crossSite =
+    process.env.COOKIE_SAMESITE === "none" ||
+    (!process.env.COOKIE_DOMAIN && process.env.NODE_ENV === "production");
+
   const options: CookieOptions = {
     httpOnly: true,
-    secure:
-      process.env.COOKIE_SECURE === "true" ||
-      process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    secure: crossSite || process.env.COOKIE_SECURE === "true",
+    sameSite: crossSite ? "none" : "lax",
     path: "/",
   };
 

@@ -36,6 +36,20 @@
       "when": 1781602131757,
       "tag": "0004_red_nehzno",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1781673839921,
+      "tag": "0005_absent_killraven",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1781675434476,
+      "tag": "0006_shallow_omega_flight",
+      "breakpoints": true
     }
   ]
 }

@@ -14,6 +14,7 @@ import attendanceRouter from "./router/attendanceRouter.js";
 import shiftTypeRouter from "./router/shiftTypeRouter.js";
 import shiftRequestRouter from "./router/shiftRequestRouter.js";
 import trainingRouter from "./router/trainingRouter.js";
+import subscriptionRouter from "./router/subscriptionRouter.js";
 
 const router = Router();
 
@@ -38,5 +39,6 @@ router.use("/attendance", attendanceRouter);
 router.use("/shift-types", shiftTypeRouter);
 router.use("/shift-requests", shiftRequestRouter);
 router.use("/training", trainingRouter);
+router.use("/subscriptions", subscriptionRouter);
 
 export default router;
