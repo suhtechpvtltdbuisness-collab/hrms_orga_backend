@@ -7,9 +7,9 @@ import { handleRazorpayWebhook } from "./controllers/subscriptionController.js";
 const app = express();
 
 const allowedOrigins = [
-  "https://suhtech.store",
-  "https://www.suhtech.store",
-  "https://admin.suhtech.store",
+  "https://orga.cc",
+  "https://www.orga.cc",
+  "https://admin.orga.cc",
   "http://localhost:5173",
   "http://localhost:3000",
   "http://localhost:4173",
