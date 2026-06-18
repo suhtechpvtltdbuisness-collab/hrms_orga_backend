@@ -30,6 +30,15 @@ class LeaveRepository {
     return result;
   }
 
+  async getBalanceByEmpUserId(userId: number) {
+    const [result] = await db
+      .select()
+      .from(leave)
+      .where(eq(leave.empId, userId))
+      .limit(1);
+    return result ?? null;
+  }
+
   async getAllLeaves() {
     const result = await db.select().from(leave);
     return result;
@@ -37,13 +46,9 @@ class LeaveRepository {
 
   async getLeavesByUserId(userId: number) {
     const result = await db
-      .select({
-        leave: leave,
-        employee: Employee,
-      })
+      .select()
       .from(leave)
-      .innerJoin(Employee, eq(leave.empId, Employee.id))
-      .where(eq(Employee.userId, userId));
+      .where(eq(leave.empId, userId));
     return result;
   }
 
@@ -71,7 +76,7 @@ class LeaveRepository {
     const result = await db
       .update(leave)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(leave.empId, employeeResult[0].id))
+      .where(eq(leave.empId, userId))
       .returning();
     return result[0];
   }

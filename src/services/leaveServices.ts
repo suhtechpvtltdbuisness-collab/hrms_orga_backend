@@ -84,6 +84,100 @@ class LeaveServices {
     };
   }
 
+  async allocateLeave(
+    data: {
+      empId: number;
+      sickLeave?: number;
+      casualLeave?: number;
+      paidLeave?: number;
+    },
+    currentUser: typeof users.$inferSelect,
+  ) {
+    if (!currentUser.isAdmin && currentUser.type !== "admin") {
+      throw new Error("Only admins can allocate leave");
+    }
+
+    if (!data.empId) {
+      throw new Error("empId is required");
+    }
+
+    const [employee] = await db
+      .select()
+      .from(Employee)
+      .where(eq(Employee.userId, data.empId))
+      .limit(1);
+
+    if (!employee) {
+      throw new Error("Employee not found with user ID: " + data.empId);
+    }
+
+    const existing = await this.leaveRepo.getBalanceByEmpUserId(data.empId);
+
+    const sickLeave = data.sickLeave ?? existing?.sickLeave ?? 0;
+    const casualLeave = data.casualLeave ?? existing?.casualLeave ?? 0;
+    const paidLeave = data.paidLeave ?? existing?.paidLeave ?? 0;
+    const sickLeaveTaken = existing?.sickLeaveTaken ?? 0;
+    const casualLeaveTaken = existing?.casualLeaveTaken ?? 0;
+    const paidLeaveTaken = existing?.paidLeaveTaken ?? 0;
+
+    if (sickLeaveTaken > sickLeave || casualLeaveTaken > casualLeave || paidLeaveTaken > paidLeave) {
+      throw new Error("Allocated leave cannot be less than already taken leave");
+    }
+
+    const payload = {
+      empId: data.empId,
+      sickLeave,
+      casualLeave,
+      paidLeave,
+      sickLeaveTaken,
+      casualLeaveTaken,
+      paidLeaveTaken,
+      total: sickLeave + casualLeave + paidLeave,
+      taken: sickLeaveTaken + casualLeaveTaken + paidLeaveTaken,
+      createdBy: currentUser.id,
+    };
+
+    let result;
+    if (existing) {
+      result = await this.leaveRepo.updateLeave(existing.id, payload as typeof leave.$inferInsert);
+    } else {
+      result = await this.leaveRepo.createLeave(payload as typeof leave.$inferInsert);
+    }
+
+    return {
+      message: existing ? "Leave allocation updated" : "Leave allocated successfully",
+      success: true,
+      data: result,
+    };
+  }
+
+  async getBalanceByUserId(userId: number) {
+    const result = await this.leaveRepo.getBalanceByEmpUserId(userId);
+    if (!result) {
+      return {
+        message: "No leave balance found",
+        success: true,
+        data: null,
+      };
+    }
+
+    return {
+      message: "Leave balance fetched",
+      success: true,
+      data: {
+        ...result,
+        sickRemaining: result.sickLeave - result.sickLeaveTaken,
+        casualRemaining: result.casualLeave - result.casualLeaveTaken,
+        paidRemaining: result.paidLeave - result.paidLeaveTaken,
+        totalRemaining:
+          result.sickLeave -
+          result.sickLeaveTaken +
+          (result.casualLeave - result.casualLeaveTaken) +
+          (result.paidLeave - result.paidLeaveTaken),
+      },
+    };
+  }
+
   async getLeaveById(id: number) {
     const result = await this.leaveRepo.getLeaveById(id);
     if (!result) {
@@ -208,7 +302,7 @@ class LeaveServices {
     if (!existingLeaves || existingLeaves.length === 0) {
       throw new Error("Leave record not found for this user");
     }
-    const existingLeave = existingLeaves[0].leave;
+    const existingLeave = existingLeaves[0];
 
     // Recalculate totals if individual leave values are provided
     const updateData: any = { ...data };

@@ -373,6 +373,25 @@ export const leave = pgTable("leave", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const leaveRequest = pgTable("leave_request", {
+  id: serial("id").primaryKey(),
+  empId: integer("emp_id")
+    .notNull()
+    .references(() => Employee.userId),
+  leaveType: leaveTypeEnum("leave_type").notNull(),
+  fromDate: date("from_date").notNull(),
+  toDate: date("to_date").notNull(),
+  days: integer("days").notNull(),
+  reason: text("reason"),
+  status: shiftRequestStatusEnum("status").default("submitted").notNull(),
+  reviewedBy: integer("reviewed_by").references(() => users.id),
+  reviewedAt: timestamp("reviewed_at"),
+  rejectionReason: text("rejection_reason"),
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Payroll Table
 export const payroll = pgTable("payroll", {
   id: serial("id").primaryKey(),

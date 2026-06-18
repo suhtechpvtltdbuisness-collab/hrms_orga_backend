@@ -5,6 +5,12 @@ import { authenticate, authorizeAdmin } from "../middleware/auth.js";
 const leaveRouter = Router();
 const leaveController = new LeaveController();
 
+leaveRouter.post("/allocate", authenticate, authorizeAdmin, (req, res, next) =>
+  leaveController.allocateLeave(req, res, next),
+);
+leaveRouter.get("/balance/:userId", authenticate, (req, res, next) =>
+  leaveController.getBalanceByUserId(req, res, next),
+);
 leaveRouter.post("/", authenticate, authorizeAdmin, (req, res, next) =>
   leaveController.createLeave(req, res, next),
 );

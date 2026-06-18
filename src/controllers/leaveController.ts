@@ -93,6 +93,26 @@ class LeaveController {
       next(error);
     }
   }
+
+  async allocateLeave(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = res.locals.user;
+      const result = await this.leaveServices.allocateLeave(req.body, user);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message });
+    }
+  }
+
+  async getBalanceByUserId(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = Number(req.params.userId);
+      const result = await this.leaveServices.getBalanceByUserId(userId);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export default LeaveController;

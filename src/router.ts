@@ -14,6 +14,7 @@ import attendanceRouter from "./router/attendanceRouter.js";
 import shiftTypeRouter from "./router/shiftTypeRouter.js";
 import shiftRequestRouter from "./router/shiftRequestRouter.js";
 import trainingRouter from "./router/trainingRouter.js";
+import leaveRequestRouter from "./router/leaveRequestRouter.js";
 import subscriptionRouter from "./router/subscriptionRouter.js";
 
 const router = Router();
@@ -30,6 +31,7 @@ router.use("/designation", desiganationRouter);
 router.use("/users", userRouter);
 router.use("/payroll", payrollRouter);
 router.use("/leave", leaveRouter);
+router.use("/leave-requests", leaveRequestRouter);
 router.use("/employment", employmentRouter);
 router.use("/employees", employeeRouter);
 router.use("/documents", documentRouter);
