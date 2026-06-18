@@ -1,5 +1,5 @@
 import { db } from "../db/connection.js";
-import { Plain, PlainPayment, Employee } from "../db/schema.js";
+import { Plain, PlainPayment, Employee, users } from "../db/schema.js";
 import { and, eq, sql } from "drizzle-orm";
 
 export class SubscriptionRepository {
@@ -20,6 +20,30 @@ export class SubscriptionRepository {
       .where(eq(Employee.adminId, adminId));
 
     return result?.count ?? 0;
+  }
+
+  async getAdminIdByEmployeeUserId(userId: number): Promise<number | null> {
+    const [row] = await db
+      .select({ adminId: Employee.adminId })
+      .from(Employee)
+      .where(eq(Employee.userId, userId))
+      .limit(1);
+
+    return row?.adminId ?? null;
+  }
+
+  async getAdminBasicDetails(adminId: number) {
+    const [admin] = await db
+      .select({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+      })
+      .from(users)
+      .where(and(eq(users.id, adminId), eq(users.isDeleted, false)))
+      .limit(1);
+
+    return admin ?? null;
   }
 
   async getPlanByRazorpaySubscriptionId(subscriptionId: string) {

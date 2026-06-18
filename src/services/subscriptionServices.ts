@@ -46,22 +46,68 @@ export class SubscriptionService {
       name: plan.name,
       description: plan.description,
       priceInr: plan.priceInr,
+      pricePerEmployeeInr: plan.pricePerEmployeeInr,
       durationDays: plan.durationDays,
       maxEmployees: plan.maxEmployees,
       module: plan.module,
+      billingModel:
+        plan.priceInr > 0
+          ? `flat_${plan.priceInr}_inr_up_to_${plan.maxEmployees}_employees`
+          : "trial",
     }));
   }
 
+  async resolveSubscriptionOwner(userId: number) {
+    const organizationAdminId =
+      await this.repo.getAdminIdByEmployeeUserId(userId);
+
+    if (organizationAdminId) {
+      return {
+        ownerId: organizationAdminId,
+        organizationAdminId,
+      };
+    }
+
+    return {
+      ownerId: userId,
+      organizationAdminId: null as number | null,
+    };
+  }
+
   async getCurrentSubscription(userId: number) {
-    const plan = await this.repo.getActivePlanByUserId(userId);
-    return this.enrichPlan(userId, plan);
+    const { ownerId, organizationAdminId } =
+      await this.resolveSubscriptionOwner(userId);
+    const plan = await this.repo.getActivePlanByUserId(ownerId);
+
+    if (organizationAdminId) {
+      const admin = await this.repo.getAdminBasicDetails(organizationAdminId);
+      return {
+        planType: plan?.planType ?? null,
+        expired: plan?.expired ?? null,
+        adminName: admin?.name ?? null,
+      };
+    }
+
+    return this.enrichPlan(ownerId, plan);
   }
 
   async getSubscriptionSummary(userId: number) {
-    const plan = await this.repo.getActivePlanByUserId(userId);
-    const enrichedPlan = plan ? await this.enrichPlan(userId, plan) : null;
+    const { ownerId, organizationAdminId } =
+      await this.resolveSubscriptionOwner(userId);
+    const plan = await this.repo.getActivePlanByUserId(ownerId);
     const isSubscribed = this.isPlanActive(plan);
 
+    if (organizationAdminId) {
+      const admin = await this.repo.getAdminBasicDetails(organizationAdminId);
+      return {
+        isSubscribed,
+        planType: plan?.planType ?? null,
+        expired: plan?.expired ?? null,
+        adminName: admin?.name ?? null,
+      };
+    }
+
+    const enrichedPlan = plan ? await this.enrichPlan(ownerId, plan) : null;
     return {
       isSubscribed,
       plan: enrichedPlan,

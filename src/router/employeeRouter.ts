@@ -7,11 +7,11 @@ import {
   updateEmployee,
   deleteEmployee,
 } from "../controllers/employeeController.js";
-import { authenticate } from "../middleware/auth.js";
+import { authenticate, authorizeAdmin } from "../middleware/auth.js";
 
 const router = Router();
 
-router.post("/", authenticate, createEmployee);
+router.post("/", authenticate, authorizeAdmin, createEmployee);
 router.get("/", authenticate, getAllEmployees);
 router.get("/:id", authenticate, getEmployeeById);
 router.get("/user/:userId", authenticate, getEmployeeByUserId);

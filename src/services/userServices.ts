@@ -12,7 +12,7 @@ class UserServices {
     data: typeof users.$inferInsert,
     currentUser: typeof users.$inferSelect,
   ) {
-    if (!currentUser.isAdmin) {
+    if (!currentUser.isAdmin || currentUser.type !== "admin") {
       throw new Error("unauthorize, Only admins can create users");
     }
 

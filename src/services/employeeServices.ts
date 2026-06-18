@@ -1,5 +1,6 @@
 import { EmployeeRepository } from "../repository/employee.repo.js";
 import { Employee, users } from "../db/schema.js";
+import { subscriptionService } from "./subscriptionServices.js";
 
 export class EmployeeService {
   private employeeRepo: EmployeeRepository;
@@ -9,7 +10,7 @@ export class EmployeeService {
   }
 
   async createEmployee(data: typeof Employee.$inferInsert, currentUser: any) {
-    if (!currentUser.isAdmin) {
+    if (!currentUser.isAdmin || currentUser.type !== "admin") {
       throw new Error("Only admins can create employees");
     }
 
@@ -17,6 +18,8 @@ export class EmployeeService {
     if (!data.adminId || !data.userId) {
       throw new Error("Admin ID and User ID are required");
     }
+
+    await subscriptionService.assertCanAddEmployee(currentUser.id);
 
     return await this.employeeRepo.createEmployee(data);
   }

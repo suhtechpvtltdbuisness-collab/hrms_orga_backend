@@ -1,10 +1,11 @@
-export type SubscriptionPlanType = "free_trial" | "starter_pack";
+export type SubscriptionPlanType = "free_trial" | "starter_pack" | "premium";
 
 export interface SubscriptionPlanConfig {
   planType: SubscriptionPlanType;
   name: string;
   description: string;
   priceInr: number;
+  pricePerEmployeeInr: number;
   durationDays: number;
   maxEmployees: number;
   module: "hrms";
@@ -18,8 +19,9 @@ export const SUBSCRIPTION_PLANS: Record<
   free_trial: {
     planType: "free_trial",
     name: "Free Trial",
-    description: "7-day trial with up to 4 employees",
+    description: "7-day ORGA HRMS trial with up to 4 employees",
     priceInr: 0,
+    pricePerEmployeeInr: 0,
     durationDays: 7,
     maxEmployees: 4,
     module: "hrms",
@@ -27,13 +29,27 @@ export const SUBSCRIPTION_PLANS: Record<
   },
   starter_pack: {
     planType: "starter_pack",
-    name: "Starter Pack",
-    description: "Full HRMS access for growing teams",
-    priceInr: 999,
+    name: "Growth",
+    description:
+      "₹2,999/month flat — up to 50 employees (~₹60/employee at full capacity)",
+    priceInr: 2999,
+    pricePerEmployeeInr: 60,
     durationDays: 30,
-    maxEmployees: 25,
+    maxEmployees: 50,
     module: "hrms",
-    organizationType: "startup",
+    organizationType: "sme",
+  },
+  premium: {
+    planType: "premium",
+    name: "Business",
+    description:
+      "₹4,999/month flat — up to 50 employees with full ORGA HRMS suite",
+    priceInr: 4999,
+    pricePerEmployeeInr: 100,
+    durationDays: 30,
+    maxEmployees: 50,
+    module: "hrms",
+    organizationType: "enterprise",
   },
 };
 

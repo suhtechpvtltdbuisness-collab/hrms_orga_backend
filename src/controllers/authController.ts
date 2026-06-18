@@ -312,7 +312,10 @@ export const getProfile = async (
           active: user.active,
         },
         subscription,
-        plan: subscription.plan,
+        plan:
+          user.type === "admin" && "plan" in subscription
+            ? subscription.plan
+            : null,
       },
     });
   } catch (error) {
