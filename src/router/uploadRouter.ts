@@ -54,10 +54,22 @@ uploadRouter.get(
         return;
       }
 
-      const { stream, blob } = await get(url, {
+      const result = await get(url, {
         access: "private",
         token: token,
       });
+
+      if (!result) {
+        res.status(404).send("Blob not found");
+        return;
+      }
+
+      if (result.statusCode === 304) {
+        res.status(304).end();
+        return;
+      }
+
+      const { stream, blob } = result;
 
       res.setHeader("Content-Type", blob.contentType || "image/jpeg");
       
