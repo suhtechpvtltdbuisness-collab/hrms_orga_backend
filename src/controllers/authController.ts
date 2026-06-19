@@ -310,6 +310,7 @@ export const getProfile = async (
           maritalStatus: user.maritalStatus,
           address: user.address,
           active: user.active,
+          profilePic: user.profilePic,
         },
         subscription,
         plan:

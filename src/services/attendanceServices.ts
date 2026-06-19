@@ -67,6 +67,20 @@ export class AttendanceService {
     this.attendanceRepo = new AttendanceRepository();
   }
 
+  private adjustAttendanceStatus(record: any): any {
+    if (!record) return record;
+    const todayStr = getTodayDateString();
+    // If they checked in but did not check out, and the attendance date is in the past
+    if (record.checkIn && !record.checkOut && record.attendanceDate < todayStr) {
+      return { 
+        ...record, 
+        status: "absent" as const, 
+        period: "less_than_half_day" 
+      };
+    }
+    return record;
+  }
+
   async createAttendance(
     data: Partial<typeof attendance.$inferInsert> & {
       empId: number;
@@ -100,11 +114,31 @@ export class AttendanceService {
 
     const series = data.series ?? (await this.attendanceRepo.generateNextSeries());
 
+    // Auto-calculate period if status is provided
+    let periodVal = data.period ?? null;
+    if (!periodVal) {
+      if (data.status === "present") {
+        periodVal = "full_time";
+      } else if (data.status === "absent") {
+        periodVal = "less_than_half_day";
+      } else if (data.status === "half_day") {
+        periodVal = "half_day";
+      }
+    }
+
+    // Map half_day status to present status + half_day period
+    let statusVal = data.status;
+    if (statusVal === "half_day") {
+      statusVal = "present";
+      periodVal = "half_day";
+    }
+
     const attendanceData = {
       series,
       empId: data.empId,
       attendanceDate: data.attendanceDate,
-      status: data.status,
+      status: statusVal,
+      period: periodVal,
       leaveType: data.status === "on_leave" ? data.leaveType : null,
       shift: data.shift ?? null,
       lateEntry: data.lateEntry ?? false,
@@ -115,7 +149,7 @@ export class AttendanceService {
 
     const created = await this.attendanceRepo.createAttendance(attendanceData);
     const enriched = await this.attendanceRepo.getAttendanceById(created[0].id);
-    return enriched[0];
+    return this.adjustAttendanceStatus(enriched[0]);
   }
 
   async getNextSeries(currentUser: typeof users.$inferSelect) {
@@ -147,7 +181,8 @@ export class AttendanceService {
     currentUser: typeof users.$inferSelect,
     filters: AttendanceFilters = {},
   ) {
-    return await this.attendanceRepo.getAllAttendances(filters);
+    const list = await this.attendanceRepo.getAllAttendances(filters);
+    return list.map((r) => this.adjustAttendanceStatus(r));
   }
 
   async getUnmarkedDates(
@@ -178,83 +213,171 @@ export class AttendanceService {
   async markAttendanceBulk(
     body: {
       empId: number;
-      dates: string[];
-      status: string;
-      leaveType?: LeaveType | null;
-      markedBy?: number;
-      shift?: string | null;
-      lateEntry?: boolean;
-      earlyExit?: boolean;
+      records: { date: string; status: string; leaveType?: string; shift?: string }[];
     },
     currentUser: typeof users.$inferSelect,
   ) {
     if (!currentUser.isAdmin) {
-      throw new Error("Only admins can mark attendance in bulk");
+      throw new Error("Only admins can mark attendance bulk");
     }
 
-    const { empId, dates, status, leaveType } = body;
-
-    if (!empId || !dates?.length || !status) {
-      throw new Error("empId, dates, and status are required");
+    const { empId, records } = body;
+    if (!empId || !records || !Array.isArray(records)) {
+      throw new Error("empId and records array are required");
     }
 
-    const validatedStatus = validateStatus(status);
     await validateEmployee(empId);
 
-    if (validatedStatus === "on_leave" && !leaveType) {
-      throw new Error("leaveType is required when status is on_leave");
-    }
-
-    const markedBy = body.markedBy ?? currentUser.id;
     const results = [];
-
-    for (const date of dates) {
-      const existing = await this.attendanceRepo.getAttendanceByEmpAndDate(
-        empId,
-        date,
-      );
-      if (existing.length > 0) {
-        throw new Error(`Attendance already marked for date: ${date}`);
+    for (const r of records) {
+      validateStatus(r.status);
+      if (r.status === "on_leave" && !r.leaveType) {
+        throw new Error(`leaveType is required for date ${r.date} when status is on_leave`);
       }
 
-      const series = await this.attendanceRepo.generateNextSeries();
-      const record = await this.attendanceRepo.createAttendance({
-        series,
+      let statusVal = r.status as AttendanceStatus;
+      let periodVal = null;
+      if (statusVal === "present") {
+        periodVal = "full_time";
+      } else if (statusVal === "absent") {
+        periodVal = "less_than_half_day";
+      } else if (statusVal === "half_day") {
+        statusVal = "present";
+        periodVal = "half_day";
+      }
+
+      const existing = await this.attendanceRepo.getAttendanceByEmpAndDate(
         empId,
-        attendanceDate: date,
-        status: validatedStatus,
-        leaveType: validatedStatus === "on_leave" ? leaveType : null,
-        shift: body.shift ?? null,
-        lateEntry: body.lateEntry ?? false,
-        earlyExit: body.earlyExit ?? false,
-        markedBy,
-        isDeleted: false,
-      });
-      results.push(record[0]);
+        r.date,
+      );
+
+      if (existing.length > 0) {
+        const updated = await this.attendanceRepo.updateAttendance(existing[0].id, {
+          status: statusVal,
+          period: periodVal,
+          leaveType: (statusVal === "on_leave" ? r.leaveType : null) as LeaveType | null,
+          shift: r.shift ?? null,
+          markedBy: currentUser.id,
+        });
+        results.push(updated[0]);
+      } else {
+        const series = await this.attendanceRepo.generateNextSeries();
+        const created = await this.attendanceRepo.createAttendance({
+          series,
+          empId,
+          attendanceDate: r.date,
+          status: statusVal,
+          period: periodVal,
+          leaveType: (statusVal === "on_leave" ? r.leaveType : null) as LeaveType | null,
+          shift: r.shift ?? null,
+          lateEntry: false,
+          earlyExit: false,
+          markedBy: currentUser.id,
+          isDeleted: false,
+        });
+        results.push(created[0]);
+      }
     }
 
-    return results;
+    return results.map((r) => this.adjustAttendanceStatus(r));
   }
 
   async markSelfAttendance(
-    body: { status?: string; shift?: string; lateEntry?: boolean; earlyExit?: boolean },
+    data: {
+      attendanceDate: string;
+      status: string;
+      leaveType?: string;
+      shift?: string;
+    },
     currentUser: typeof users.$inferSelect,
   ) {
-    const status = validateStatus(body.status ?? "present");
-    const today = getTodayDateString();
-
     await validateEmployee(currentUser.id);
+
+    if (!data.attendanceDate || !data.status) {
+      throw new Error("attendanceDate and status are required");
+    }
+
+    validateStatus(data.status);
+
+    if (data.status === "on_leave" && !data.leaveType) {
+      throw new Error("leaveType is required when status is on_leave");
+    }
+
+    let statusVal = data.status as AttendanceStatus;
+    let periodVal = null;
+    if (statusVal === "present") {
+      periodVal = "full_time";
+    } else if (statusVal === "absent") {
+      periodVal = "less_than_half_day";
+    } else if (statusVal === "half_day") {
+      statusVal = "present";
+      periodVal = "half_day";
+    }
+
+    const existing = await this.attendanceRepo.getAttendanceByEmpAndDate(
+      currentUser.id,
+      data.attendanceDate,
+    );
+
+    if (existing.length > 0) {
+      const updated = await this.attendanceRepo.updateAttendance(existing[0].id, {
+        status: statusVal,
+        period: periodVal,
+        leaveType: (statusVal === "on_leave" ? data.leaveType : null) as LeaveType | null,
+        shift: data.shift ?? null,
+        markedBy: currentUser.id,
+      });
+      const enriched = await this.attendanceRepo.getAttendanceById(updated[0].id);
+      return this.adjustAttendanceStatus(enriched[0]);
+    }
+
+    const series = await this.attendanceRepo.generateNextSeries();
+    const created = await this.attendanceRepo.createAttendance({
+      series,
+      empId: currentUser.id,
+      attendanceDate: data.attendanceDate,
+      status: statusVal,
+      period: periodVal,
+      leaveType: (statusVal === "on_leave" ? data.leaveType : null) as LeaveType | null,
+      shift: data.shift ?? null,
+      lateEntry: false,
+      earlyExit: false,
+      markedBy: currentUser.id,
+      isDeleted: false,
+    });
+
+    const enriched = await this.attendanceRepo.getAttendanceById(created[0].id);
+    return this.adjustAttendanceStatus(enriched[0]);
+  }
+
+  async checkInSelf(currentUser: typeof users.$inferSelect) {
+    const today = getTodayDateString();
+    await validateEmployee(currentUser.id);
+
+    const now = new Date();
+    const tenAM = new Date(now);
+    tenAM.setHours(10, 0, 0, 0);
+    const lateEntry = now.getTime() > tenAM.getTime();
 
     const existing = await this.attendanceRepo.getAttendanceByEmpAndDate(
       currentUser.id,
       today,
     );
-    if (existing.length > 0) {
-      throw new Error("Attendance already marked for today");
-    }
 
-    if (status === "on_leave") {
-      throw new Error("Use leave request flow to mark on_leave");
+    if (existing.length > 0) {
+      const record = existing[0];
+      if (record.checkIn) {
+        throw new Error("Already checked in today");
+      }
+      const updated = await this.attendanceRepo.updateAttendance(record.id, {
+        checkIn: now,
+        lateEntry,
+        status: "present",
+        period: "less_than_half_day",
+        markedBy: currentUser.id,
+      });
+      const enriched = await this.attendanceRepo.getAttendanceById(updated[0].id);
+      return this.adjustAttendanceStatus(enriched[0]);
     }
 
     const series = await this.attendanceRepo.generateNextSeries();
@@ -262,17 +385,68 @@ export class AttendanceService {
       series,
       empId: currentUser.id,
       attendanceDate: today,
-      status,
+      status: "present",
+      period: "less_than_half_day",
       leaveType: null,
-      shift: body.shift ?? null,
-      lateEntry: body.lateEntry ?? false,
-      earlyExit: body.earlyExit ?? false,
+      shift: null,
+      lateEntry,
+      earlyExit: false,
       markedBy: currentUser.id,
+      checkIn: now,
+      checkOut: null,
       isDeleted: false,
     });
 
     const enriched = await this.attendanceRepo.getAttendanceById(created[0].id);
-    return enriched[0];
+    return this.adjustAttendanceStatus(enriched[0]);
+  }
+
+  async checkOutSelf(currentUser: typeof users.$inferSelect) {
+    const today = getTodayDateString();
+    await validateEmployee(currentUser.id);
+
+    const existing = await this.attendanceRepo.getAttendanceByEmpAndDate(
+      currentUser.id,
+      today,
+    );
+
+    if (existing.length === 0 || !existing[0].checkIn) {
+      throw new Error("Cannot check out without checking in first today");
+    }
+
+    const record = existing[0];
+    if (record.checkOut) {
+      throw new Error("Already checked out today");
+    }
+
+    const checkOutTime = new Date();
+    const diffMs = checkOutTime.getTime() - record.checkIn!.getTime();
+    const hours = diffMs / (1000 * 60 * 60);
+
+    let status: AttendanceStatus = "present";
+    let period = "full_time";
+    if (hours < 3) {
+      status = "absent";
+      period = "less_than_half_day";
+    } else if (hours < 8) {
+      status = "present";
+      period = "half_day";
+    }
+
+    const updated = await this.attendanceRepo.updateAttendance(record.id, {
+      checkOut: checkOutTime,
+      status,
+      period,
+    });
+
+    const enriched = await this.attendanceRepo.getAttendanceById(updated[0].id);
+    return this.adjustAttendanceStatus(enriched[0]);
+  }
+
+  async getMyAttendance(currentUser: typeof users.$inferSelect, month?: string) {
+    await validateEmployee(currentUser.id);
+    const list = await this.attendanceRepo.getAttendancesByEmployeeId(currentUser.id, month);
+    return list.map((r) => this.adjustAttendanceStatus(r));
   }
 
   async getAttendanceById(id: number, currentUser: typeof users.$inferSelect) {
@@ -282,7 +456,7 @@ export class AttendanceService {
       throw new Error("Attendance record not found");
     }
 
-    return attendanceRecord;
+    return attendanceRecord.map((r) => this.adjustAttendanceStatus(r));
   }
 
   async getAttendancesByEmployeeId(
@@ -290,7 +464,8 @@ export class AttendanceService {
     currentUser: typeof users.$inferSelect,
     month?: string,
   ) {
-    return await this.attendanceRepo.getAttendancesByEmployeeId(empId, month);
+    const list = await this.attendanceRepo.getAttendancesByEmployeeId(empId, month);
+    return list.map((r) => this.adjustAttendanceStatus(r));
   }
 
   async updateAttendance(
@@ -316,17 +491,35 @@ export class AttendanceService {
       throw new Error("leaveType is required when status is on_leave");
     }
 
+    // Auto-calculate/map period if status is updated
+    let periodVal = data.period ?? null;
+    let statusVal = status;
+    if (data.status) {
+      if (data.status === "half_day") {
+        statusVal = "present";
+        periodVal = "half_day";
+      } else if (!periodVal) {
+        if (data.status === "present") {
+          periodVal = "full_time";
+        } else if (data.status === "absent") {
+          periodVal = "less_than_half_day";
+        }
+      }
+    }
+
     const updateData = {
       ...data,
+      status: statusVal,
+      period: periodVal ?? existingRecord[0].period,
       leaveType:
-        status === "on_leave"
+        statusVal === "on_leave"
           ? (data.leaveType ?? existingRecord[0].leaveType)
           : null,
     };
 
     const updated = await this.attendanceRepo.updateAttendance(id, updateData);
     const enriched = await this.attendanceRepo.getAttendanceById(updated[0].id);
-    return enriched[0];
+    return this.adjustAttendanceStatus(enriched[0]);
   }
 
   async deleteAttendance(id: number, currentUser: typeof users.$inferSelect) {
@@ -340,5 +533,40 @@ export class AttendanceService {
     }
 
     return await this.attendanceRepo.deleteAttendance(id);
+  }
+
+  async getTodayStatus(currentUser: typeof users.$inferSelect) {
+    const today = getTodayDateString();
+    await validateEmployee(currentUser.id);
+
+    const existing = await this.attendanceRepo.getAttendanceByEmpAndDate(
+      currentUser.id,
+      today,
+    );
+
+    if (existing.length > 0) {
+      const record = this.adjustAttendanceStatus(existing[0]);
+      return {
+        checkedIn: !!record.checkIn,
+        checkInTime: record.checkIn,
+        checkedOut: !!record.checkOut,
+        checkOutTime: record.checkOut,
+        status: record.status,
+        period: record.period,
+        lateEntry: record.lateEntry,
+        record,
+      };
+    }
+
+    return {
+      checkedIn: false,
+      checkInTime: null,
+      checkedOut: false,
+      checkOutTime: null,
+      status: null,
+      period: null,
+      lateEntry: false,
+      record: null,
+    };
   }
 }

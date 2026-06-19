@@ -11,11 +11,19 @@ import {
   markSelfAttendance,
   updateAttendance,
   deleteAttendance,
+  checkInSelf,
+  checkOutSelf,
+  getMyAttendance,
+  getTodayStatus,
 } from "../controllers/attendanceController.js";
 import { authenticate } from "../middleware/auth.js";
 
 const router = Router();
 
+router.get("/today-status", authenticate, getTodayStatus);
+router.post("/check-in", authenticate, checkInSelf);
+router.post("/check-out", authenticate, checkOutSelf);
+router.get("/my-attendance", authenticate, getMyAttendance);
 router.post("/self", authenticate, markSelfAttendance);
 router.post("/mark", authenticate, markAttendanceBulk);
 router.get("/unmarked", authenticate, getUnmarkedDates);

@@ -117,6 +117,7 @@ export const users = pgTable("users", {
   aadharNo: varchar("aadhar_no", { length: 50 }),
   pancardNo: varchar("pancard_no", { length: 50 }),
   isDeleted: boolean("is_deleted").default(false).notNull(),
+  profilePic: text("profile_pic"),
   createdBy: integer("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -288,11 +289,14 @@ export const attendance = pgTable(
     status: attendanceStatusEnum("status").notNull(),
     leaveType: leaveTypeEnum("leave_type"),
     shift: varchar("shift", { length: 255 }),
+    period: varchar("period", { length: 100 }),
     lateEntry: boolean("late_entry").default(false).notNull(),
     earlyExit: boolean("early_exit").default(false).notNull(),
     markedBy: integer("marked_by")
       .notNull()
       .references(() => users.id),
+    checkIn: timestamp("check_in"),
+    checkOut: timestamp("check_out"),
     isDeleted: boolean("is_deleted").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

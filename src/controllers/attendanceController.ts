@@ -147,3 +147,40 @@ export const deleteAttendance = async (req: Request, res: Response) => {
     res.status(400).json({ error: error.message });
   }
 };
+
+export const checkInSelf = async (req: Request, res: Response) => {
+  try {
+    const attendance = await attendanceService.checkInSelf(res.locals.user);
+    res.status(201).json(attendance);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+export const checkOutSelf = async (req: Request, res: Response) => {
+  try {
+    const attendance = await attendanceService.checkOutSelf(res.locals.user);
+    res.status(200).json(attendance);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+export const getMyAttendance = async (req: Request, res: Response) => {
+  try {
+    const month = req.query.month as string | undefined;
+    const attendances = await attendanceService.getMyAttendance(res.locals.user, month);
+    res.json(attendances);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+export const getTodayStatus = async (req: Request, res: Response) => {
+  try {
+    const status = await attendanceService.getTodayStatus(res.locals.user);
+    res.json(status);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+};

@@ -23,6 +23,7 @@ const attendanceSelectFields = {
   attendanceDate: attendance.attendanceDate,
   leaveType: attendance.leaveType,
   status: attendance.status,
+  period: attendance.period,
   shift: attendance.shift,
   lateEntry: attendance.lateEntry,
   earlyExit: attendance.earlyExit,

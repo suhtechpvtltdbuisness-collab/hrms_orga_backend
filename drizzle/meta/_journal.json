@@ -57,6 +57,20 @@
       "when": 1781789609999,
       "tag": "0007_equal_ben_grimm",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1781850312502,
+      "tag": "0008_past_steel_serpent",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1781858430492,
+      "tag": "0009_short_rocket_raccoon",
+      "breakpoints": true
     }
   ]
 }
