@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import bcrypt from "bcrypt";
+import { OAuth2Client } from "google-auth-library";
 import { db } from "../db/connection.js";
 import { users } from "../db/schema.js";
 import { subscriptionService } from "../services/subscriptionServices.js";
@@ -329,6 +330,135 @@ export const getProfile = async (
     res.status(500).json({
       success: false,
       message: "Failed to get profile",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
+// Google Login
+export const googleLogin = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      res.status(400).json({
+        success: false,
+        message: "Google OAuth token is required",
+      });
+      return;
+    }
+
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    if (!clientId) {
+      console.error("GOOGLE_CLIENT_ID is not configured on the backend");
+      res.status(500).json({
+        success: false,
+        message: "Google login is currently unavailable",
+      });
+      return;
+    }
+
+    const client = new OAuth2Client(clientId);
+
+    const ticket = await client.verifyIdToken({
+      idToken: token,
+      audience: clientId,
+    });
+
+    const payload = ticket.getPayload();
+    if (!payload || !payload.email || !payload.name) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid token payload received from Google",
+      });
+      return;
+    }
+
+    const email = payload.email;
+    const name = payload.name;
+    const picture = payload.picture;
+
+    // Check if user exists
+    const [existingUser] = await db
+      .select()
+      .from(users)
+      .where(and(eq(users.email, email), eq(users.isDeleted, false)))
+      .limit(1);
+
+    let user = existingUser;
+
+    if (user) {
+      // User exists
+      if (!user.active) {
+        res.status(403).json({
+          success: false,
+          message: "Account is inactive. Please contact administrator.",
+        });
+        return;
+      }
+      
+      // Update profile picture if it was empty
+      if (!user.profilePic && picture) {
+        const [updatedUser] = await db
+          .update(users)
+          .set({ profilePic: picture })
+          .where(eq(users.id, user.id))
+          .returning();
+        user = updatedUser;
+      }
+    } else {
+      // Create user if not exists
+      const randomPassword = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      const hashedPassword = await bcrypt.hash(randomPassword, 10);
+
+      const [newUser] = await db
+        .insert(users)
+        .values({
+          name,
+          email,
+          password: hashedPassword,
+          type: "admin",
+          isAdmin: true,
+          roleId: 1,
+          maritalStatus: false,
+          active: true,
+          isDeleted: false,
+          profilePic: picture || null,
+        })
+        .returning();
+      user = newUser;
+    }
+
+    // Generate JWT
+    const tokens = generateTokens({
+      userId: user.id,
+      email: user.email,
+      type: user.type,
+      roleId: user.roleId,
+    });
+
+    setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
+
+    const subscription = await subscriptionService.getSubscriptionSummary(
+      user.id,
+    );
+
+    const { password: _, ...userWithoutPassword } = user;
+
+    res.status(200).json({
+      success: true,
+      message: existingUser ? "Login successful" : "Account created and login successful",
+      data: {
+        user: userWithoutPassword,
+        tokens,
+        subscription,
+      },
+    });
+  } catch (error) {
+    console.error("Google login error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Google login failed",
       error: error instanceof Error ? error.message : "Unknown error",
     });
   }

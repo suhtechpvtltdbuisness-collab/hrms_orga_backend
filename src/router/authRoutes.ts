@@ -5,6 +5,7 @@ import {
   logout,
   refreshToken,
   getProfile,
+  googleLogin,
 } from "../controllers/authController.js";
 import { authenticate } from "../middleware/auth.js";
 
@@ -13,6 +14,7 @@ const authRouter = Router();
 // Public routes
 authRouter.post("/register", register);
 authRouter.post("/login", login);
+authRouter.post("/google", googleLogin);
 authRouter.post("/refresh-token", refreshToken);
 
 authRouter.post("/logout", logout);
