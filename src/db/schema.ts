@@ -105,6 +105,7 @@ export const users = pgTable("users", {
   bloodGroup: varchar("blood_group", { length: 10 }),
   password: text("password").notNull(),
   isAdmin: boolean("is_admin").default(false).notNull(),
+  roleId: integer("role_id").default(2).notNull(),
   maritalStatus: boolean("marital_status").notNull(),
   type: userTypeEnum("type").notNull(),
   eContactName: varchar("e_contact_name", { length: 255 }),

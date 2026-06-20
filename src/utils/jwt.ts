@@ -9,6 +9,7 @@ export interface TokenPayload {
   userId: number;
   email: string;
   type: string;
+  roleId: number;
 }
 
 export const generateAccessToken = (payload: TokenPayload): string => {

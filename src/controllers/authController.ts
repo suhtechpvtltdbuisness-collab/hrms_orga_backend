@@ -60,6 +60,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
         password: hashedPassword,
         type: "admin",
         isAdmin: true,
+        roleId: 1,
         phone: phone || null,
         gender: gender || null,
         dob: dob || null,
@@ -78,6 +79,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       userId: newUser.id,
       email: newUser.email,
       type: newUser.type,
+      roleId: newUser.roleId,
     });
 
     setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
@@ -162,6 +164,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       userId: user.id,
       email: user.email,
       type: user.type,
+      roleId: user.roleId,
     });
 
     setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
@@ -235,6 +238,7 @@ export const refreshToken = async (
         userId: decoded.userId,
         email: decoded.email,
         type: decoded.type,
+        roleId: decoded.roleId,
       });
 
       setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
@@ -304,6 +308,7 @@ export const getProfile = async (
           email: user.email,
           phone: user.phone,
           type: user.type,
+          roleId: user.roleId,
           gender: user.gender,
           dob: user.dob,
           bloodGroup: user.bloodGroup,

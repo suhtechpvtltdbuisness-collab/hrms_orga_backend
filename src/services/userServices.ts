@@ -12,7 +12,7 @@ class UserServices {
     data: typeof users.$inferInsert,
     currentUser: typeof users.$inferSelect,
   ) {
-    if (!currentUser.isAdmin || currentUser.type !== "admin") {
+    if (currentUser.roleId !== 0 && currentUser.roleId !== 1) {
       throw new Error("unauthorize, Only admins can create users");
     }
 
@@ -36,6 +36,8 @@ class UserServices {
       ...data,
       password: hashedPassword,
       createdBy: currentUser.id,
+      roleId: 2, // Added by admin/super admin, so role is employee (2)
+      isAdmin: false,
     };
 
     const result = await this.userRepo.createUser(userData, currentUser);
@@ -94,7 +96,7 @@ class UserServices {
     data: typeof users.$inferInsert,
     currentUser: typeof users.$inferSelect,
   ) {
-    if (!currentUser.isAdmin) {
+    if (currentUser.roleId !== 0 && currentUser.roleId !== 1) {
       throw new Error("unauthorize, Only admins can update users");
     }
 

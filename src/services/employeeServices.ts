@@ -10,7 +10,7 @@ export class EmployeeService {
   }
 
   async createEmployee(data: typeof Employee.$inferInsert, currentUser: any) {
-    if (!currentUser.isAdmin || currentUser.type !== "admin") {
+    if (currentUser.roleId !== 0 && currentUser.roleId !== 1) {
       throw new Error("Only admins can create employees");
     }
 
@@ -27,8 +27,8 @@ export class EmployeeService {
   async getAllEmployees(currentUser: any) {
     let adminId = currentUser.id;
 
-    if (!currentUser.isAdmin) {
-      // If not admin, find the admin for this user
+    if (currentUser.roleId === 2) {
+      // If employee, find the admin for this user
       const employee = await this.employeeRepo.getEmployeeByUserId(
         currentUser.id,
       );
@@ -49,7 +49,7 @@ export class EmployeeService {
 
     // Check authorization
     if (
-      !currentUser.isAdmin &&
+      currentUser.roleId === 2 &&
       employee[0].employee?.adminId !== currentUser.id &&
       employee[0].employee?.userId !== currentUser.id
     ) {
@@ -68,7 +68,7 @@ export class EmployeeService {
 
     // Check authorization
     if (
-      !currentUser.isAdmin &&
+      currentUser.roleId === 2 &&
       employee[0].employee?.adminId !== currentUser.id &&
       employee[0].employee?.userId !== currentUser.id
     ) {
@@ -83,7 +83,7 @@ export class EmployeeService {
     data: typeof Employee.$inferInsert,
     currentUser: any,
   ) {
-    if (!currentUser.isAdmin) {
+    if (currentUser.roleId !== 0 && currentUser.roleId !== 1) {
       throw new Error("Only admins can update employees");
     }
 
@@ -97,7 +97,7 @@ export class EmployeeService {
   }
 
   async deleteEmployee(userId: number, currentUser: any) {
-    if (!currentUser.isAdmin) {
+    if (currentUser.roleId !== 0 && currentUser.roleId !== 1) {
       throw new Error("Only admins can delete employees");
     }
 

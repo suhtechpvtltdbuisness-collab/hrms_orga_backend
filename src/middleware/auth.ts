@@ -83,7 +83,8 @@ export const authorizeAdmin = async (
   next: NextFunction,
 ): Promise<void> => {
   try {
-    if (!req.user) {
+    const user = res.locals.user;
+    if (!user) {
       res.status(401).json({
         success: false,
         message: "User not authenticated",
@@ -91,10 +92,45 @@ export const authorizeAdmin = async (
       return;
     }
 
-    if (req.user.type !== "admin") {
+    // Role ID 0 is Super Admin, 1 is Admin
+    if (user.roleId !== 0 && user.roleId !== 1) {
       res.status(403).json({
         success: false,
         message: "Access denied. Admin privileges required.",
+      });
+      return;
+    }
+
+    next();
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Authorization error",
+    });
+    return;
+  }
+};
+
+export const authorizeSuperAdmin = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const user = res.locals.user;
+    if (!user) {
+      res.status(401).json({
+        success: false,
+        message: "User not authenticated",
+      });
+      return;
+    }
+
+    // Role ID 0 is Super Admin
+    if (user.roleId !== 0) {
+      res.status(403).json({
+        success: false,
+        message: "Access denied. Super Admin privileges required.",
       });
       return;
     }
