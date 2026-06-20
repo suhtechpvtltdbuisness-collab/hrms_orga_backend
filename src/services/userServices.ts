@@ -124,5 +124,20 @@ class UserServices {
       data: result,
     };
   }
+
+  async getAllUsersForSuperAdmin(page: number = 1, limit: number = 10, search?: string) {
+    const { data, total } = await this.userRepo.getAllUsersForSuperAdmin(page, limit, search);
+    return {
+      message: "successfully fetched all users for super admin",
+      success: true,
+      data: {
+        users: data,
+        total,
+        totalPages: Math.ceil(total / limit),
+        currentPage: page,
+        limit,
+      },
+    };
+  }
 }
 export default UserServices;

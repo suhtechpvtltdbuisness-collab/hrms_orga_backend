@@ -1,9 +1,13 @@
 import { Router } from "express";
 import UserController from "../controllers/userController.js";
-import { authenticate, authorizeAdmin } from "../middleware/auth.js";
+import { authenticate, authorizeAdmin, authorizeSuperAdmin } from "../middleware/auth.js";
 
 const userRouter = Router();
 const userController = new UserController();
+
+userRouter.get("/superadmin/all", authenticate, authorizeSuperAdmin, (req, res, next) =>
+  userController.getAllUsersForSuperAdmin(req, res, next),
+);
 
 userRouter.post("/", authenticate, authorizeAdmin, (req, res, next) =>
   userController.createUser(req, res, next),

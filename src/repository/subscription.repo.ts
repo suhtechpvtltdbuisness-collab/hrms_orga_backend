@@ -1,6 +1,6 @@
 import { db } from "../db/connection.js";
 import { Plain, PlainPayment, Employee, users } from "../db/schema.js";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, sql, ne } from "drizzle-orm";
 
 export class SubscriptionRepository {
   async getActivePlanByUserId(userId: number) {
@@ -79,5 +79,43 @@ export class SubscriptionRepository {
   async createPayment(data: typeof PlainPayment.$inferInsert) {
     const [payment] = await db.insert(PlainPayment).values(data).returning();
     return payment;
+  }
+
+  async getAllSubscriptionsWithUsers(page: number, limit: number, search?: string) {
+    const offset = (page - 1) * limit;
+    
+    let whereClause = and(eq(Plain.isDeleted, false), ne(users.roleId, 0));
+    
+    if (search) {
+      whereClause = and(
+        whereClause,
+        sql`(${users.name} ILIKE ${'%' + search + '%'} OR ${users.email} ILIKE ${'%' + search + '%'})`
+      );
+    }
+    
+    const [countResult] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(Plain)
+      .innerJoin(users, eq(Plain.userId, users.id))
+      .where(whereClause);
+      
+    const total = countResult?.count ?? 0;
+    
+    const data = await db
+      .select({
+        plan: Plain,
+        user: {
+          id: users.id,
+          name: users.name,
+          email: users.email,
+        },
+      })
+      .from(Plain)
+      .innerJoin(users, eq(Plain.userId, users.id))
+      .where(whereClause)
+      .limit(limit)
+      .offset(offset);
+      
+    return { data, total };
   }
 }

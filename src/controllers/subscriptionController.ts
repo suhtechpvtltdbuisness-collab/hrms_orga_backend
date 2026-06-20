@@ -233,3 +233,25 @@ export const handleRazorpayWebhook = async (
     });
   }
 };
+
+export const getAllSubscriptions = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.max(1, parseInt(req.query.limit as string) || 10);
+    const search = req.query.search as string | undefined;
+
+    const result = await subscriptionService.getAllSubscriptions(page, limit, search);
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Failed to fetch all subscriptions",
+    });
+  }
+};

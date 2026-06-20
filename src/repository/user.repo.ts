@@ -1,6 +1,6 @@
 import { db } from "../db/connection.js";
-import { users, Employee, employment } from "../db/schema.js";
-import { eq } from "drizzle-orm";
+import { users, Employee, employment, Plain } from "../db/schema.js";
+import { eq, ne, and, sql } from "drizzle-orm";
 
 class UserRepository {
   private db: typeof db;
@@ -111,6 +111,59 @@ class UserRepository {
     // Remove password from response
     const { password: _, ...userWithoutPassword } = result[0];
     return userWithoutPassword;
+  }
+
+  async getAllUsersForSuperAdmin(page: number, limit: number, search?: string) {
+    const offset = (page - 1) * limit;
+    
+    let whereClause = and(eq(users.isDeleted, false), ne(users.roleId, 0));
+    
+    if (search) {
+      whereClause = and(
+        whereClause,
+        sql`(${users.name} ILIKE ${'%' + search + '%'} OR ${users.email} ILIKE ${'%' + search + '%'})`
+      );
+    }
+    
+    const [countResult] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(users)
+      .where(whereClause);
+      
+    const total = countResult?.count ?? 0;
+    
+    const data = await db
+      .select({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        phone: users.phone,
+        active: users.active,
+        createdAt: users.createdAt,
+        roleId: users.roleId,
+        type: users.type,
+        profilePic: users.profilePic,
+        plan: {
+          id: Plain.id,
+          planType: Plain.planType,
+          active: Plain.active,
+          expired: Plain.expired,
+          price: Plain.price,
+        }
+      })
+      .from(users)
+      .leftJoin(
+        Plain,
+        and(
+          eq(Plain.userId, users.id),
+          eq(Plain.isDeleted, false)
+        )
+      )
+      .where(whereClause)
+      .limit(limit)
+      .offset(offset);
+      
+    return { data, total };
   }
 }
 export default UserRepository;

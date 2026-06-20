@@ -461,6 +461,65 @@ export class SubscriptionService {
     const enrichedPlan = await this.enrichPlan(userId, plan);
     return { isSubscribed: true, plan: enrichedPlan };
   }
+
+  async getAllSubscriptions(page: number = 1, limit: number = 10, search?: string) {
+    const { data: rawPlans, total } = await this.repo.getAllSubscriptionsWithUsers(page, limit, search);
+    
+    const formattedData = rawPlans.map(({ plan, user }) => {
+      const active = plan.active;
+      const expired = plan.expired ? new Date(plan.expired) : null;
+      const now = new Date();
+      
+      let status: "Active" | "Past Due" | "Canceled" = "Active";
+      if (!active) {
+        status = "Canceled";
+      } else if (expired && expired < now) {
+        status = "Past Due";
+      }
+
+      // Format next billing date
+      let nextBilling = "-";
+      if (expired && status !== "Canceled") {
+        nextBilling = expired.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        });
+      }
+
+      // Format plan name
+      let planName = "Free Trial";
+      if (plan.planType === "starter_pack") {
+        planName = "Growth";
+      } else if (plan.planType === "premium") {
+        planName = "Business";
+      } else if (plan.planType === "enterprise") {
+        planName = "Enterprise";
+      }
+
+      // Billing frequency
+      const billing = plan.planType === "free_trial" ? "Trial" : "Monthly";
+
+      return {
+        id: `SUB-${1000 + plan.id}`,
+        orgName: user.name,
+        plan: planName,
+        status,
+        billing,
+        nextBilling,
+        amount: `₹${Number(plan.price).toLocaleString("en-IN")}`,
+        dbPlanId: plan.id,
+      };
+    });
+
+    return {
+      subscriptions: formattedData,
+      total,
+      totalPages: Math.ceil(total / limit),
+      currentPage: page,
+      limit,
+    };
+  }
 }
 
 export const subscriptionService = new SubscriptionService();
