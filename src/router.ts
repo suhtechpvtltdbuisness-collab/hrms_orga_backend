@@ -17,6 +17,8 @@ import trainingRouter from "./router/trainingRouter.js";
 import leaveRequestRouter from "./router/leaveRequestRouter.js";
 import subscriptionRouter from "./router/subscriptionRouter.js";
 import uploadRouter from "./router/uploadRouter.js";
+import onboardingRouter from "./router/onboardingRouter.js";
+import organizationRouter from "./router/organizationRouter.js";
 
 const router = Router();
 
@@ -44,5 +46,8 @@ router.use("/shift-requests", shiftRequestRouter);
 router.use("/training", trainingRouter);
 router.use("/subscriptions", subscriptionRouter);
 router.use("/upload", uploadRouter);
+router.use("/api/onboarding", onboardingRouter);
+router.use("/organizations", organizationRouter);
 
 export default router;
+

@@ -96,6 +96,27 @@ export const Plain = pgTable("plain", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// Organizations Table
+export const organizations = pgTable("organizations", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 100 }).notNull(),
+  organizationType: varchar("organization_type", { length: 50 }).notNull(),
+  industry: varchar("industry", { length: 50 }).notNull(),
+  companySize: varchar("company_size", { length: 50 }).notNull(),
+  country: varchar("country", { length: 100 }).notNull(),
+  timezone: varchar("timezone", { length: 100 }).notNull(),
+  organizationEmail: varchar("organization_email", { length: 255 }).notNull(),
+  organizationPhone: varchar("organization_phone", { length: 50 }).notNull(),
+  website: varchar("website", { length: 255 }),
+  currency: varchar("currency", { length: 50 }).notNull(),
+  workingDays: text("working_days").array().notNull(),
+  officeStartTime: varchar("office_start_time", { length: 50 }).notNull(),
+  officeEndTime: varchar("office_end_time", { length: 50 }).notNull(),
+  createdBy: integer("created_by").references((): any => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Users Table
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -119,6 +140,8 @@ export const users = pgTable("users", {
   pancardNo: varchar("pancard_no", { length: 50 }),
   isDeleted: boolean("is_deleted").default(false).notNull(),
   profilePic: text("profile_pic"),
+  onboardingCompleted: boolean("onboarding_completed").default(false).notNull(),
+  organizationId: integer("organization_id").references((): any => organizations.id),
   createdBy: integer("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -608,3 +631,18 @@ export const employmentRelations = relations(employment, ({ one }) => ({
     references: [users.id],
   }),
 }));
+
+export const usersRelations = relations(users, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [users.organizationId],
+    references: [organizations.id],
+  }),
+}));
+
+export const organizationsRelations = relations(organizations, ({ one }) => ({
+  creator: one(users, {
+    fields: [organizations.createdBy],
+    references: [users.id],
+  }),
+}));
+

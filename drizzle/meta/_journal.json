@@ -71,6 +71,13 @@
       "when": 1781858430492,
       "tag": "0009_short_rocket_raccoon",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1782006679570,
+      "tag": "0010_old_storm",
+      "breakpoints": true
     }
   ]
 }
