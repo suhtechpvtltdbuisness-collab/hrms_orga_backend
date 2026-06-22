@@ -12,6 +12,8 @@ export type AttendanceFilters = {
   employeeName?: string;
   leaveType?: string;
   month?: string;
+  date?: string;
+  status?: string;
 };
 
 const attendanceSelectFields = {
@@ -84,8 +86,17 @@ export class AttendanceRepository {
     return await db.insert(attendance).values(data).returning();
   }
 
-  async getAllAttendances(filters: AttendanceFilters = {}) {
+  async getAllAttendances(currentUser: any, filters: AttendanceFilters = {}) {
     const conditions = [eq(attendance.isDeleted, false)];
+
+    // Role-based organization scoping
+    if (currentUser.roleId !== 0) {
+      if (currentUser.organizationId) {
+        conditions.push(eq(users.organizationId, currentUser.organizationId));
+      } else {
+        conditions.push(eq(attendance.empId, currentUser.id));
+      }
+    }
 
     if (filters.employeeName) {
       conditions.push(ilike(users.name, `%${filters.employeeName}%`));
@@ -111,6 +122,26 @@ export class AttendanceRepository {
       );
     }
 
+    if (filters.date) {
+      conditions.push(eq(attendance.attendanceDate, filters.date));
+    }
+
+    if (filters.status) {
+      const statusVal = filters.status.toLowerCase();
+      if (statusVal === "leave" || statusVal === "on_leave") {
+        conditions.push(eq(attendance.status, "on_leave"));
+      } else if (statusVal === "present") {
+        // Standard "present" filter in frontend (exclude half_day)
+        conditions.push(eq(attendance.status, "present"));
+        conditions.push(sql`${attendance.period} IS DISTINCT FROM 'half_day'`);
+      } else if (statusVal === "absent") {
+        conditions.push(eq(attendance.status, "absent"));
+      } else if (statusVal === "half_day") {
+        conditions.push(eq(attendance.status, "present"));
+        conditions.push(eq(attendance.period, "half_day"));
+      }
+    }
+
     return await attendanceJoins()
       .where(and(...conditions))
       .orderBy(attendance.attendanceDate);
@@ -122,11 +153,19 @@ export class AttendanceRepository {
     );
   }
 
-  async getAttendancesByEmployeeId(empId: number, month?: string) {
+  async getAttendancesByEmployeeId(empId: number, currentUser: any, month?: string) {
     const conditions = [
       eq(attendance.empId, empId),
       eq(attendance.isDeleted, false),
     ];
+
+    if (currentUser.roleId !== 0) {
+      if (currentUser.organizationId) {
+        conditions.push(eq(users.organizationId, currentUser.organizationId));
+      } else {
+        conditions.push(eq(attendance.empId, currentUser.id));
+      }
+    }
 
     if (month) {
       conditions.push(

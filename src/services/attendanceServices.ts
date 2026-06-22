@@ -181,7 +181,7 @@ export class AttendanceService {
     currentUser: typeof users.$inferSelect,
     filters: AttendanceFilters = {},
   ) {
-    const list = await this.attendanceRepo.getAllAttendances(filters);
+    const list = await this.attendanceRepo.getAllAttendances(currentUser, filters);
     return list.map((r) => this.adjustAttendanceStatus(r));
   }
 
@@ -464,7 +464,7 @@ export class AttendanceService {
     currentUser: typeof users.$inferSelect,
     month?: string,
   ) {
-    const list = await this.attendanceRepo.getAttendancesByEmployeeId(empId, month);
+    const list = await this.attendanceRepo.getAttendancesByEmployeeId(empId, currentUser, month);
     return list.map((r) => this.adjustAttendanceStatus(r));
   }
 

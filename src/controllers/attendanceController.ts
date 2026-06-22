@@ -45,6 +45,8 @@ export const getAllAttendances = async (req: Request, res: Response) => {
       employeeName: req.query.employeeName as string | undefined,
       leaveType: req.query.leaveType as string | undefined,
       month: req.query.month as string | undefined,
+      date: req.query.date as string | undefined,
+      status: req.query.status as string | undefined,
     };
     const attendances = await attendanceService.getAllAttendances(
       res.locals.user,
