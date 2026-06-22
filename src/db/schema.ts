@@ -12,6 +12,7 @@ import {
   PgUpdateBase,
   date,
   unique,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { number } from "zod";
@@ -74,6 +75,28 @@ export const shiftRequestStatusEnum = pgEnum("shift_request_status", [
   "approved",
   "rejected",
 ]);
+export const salaryComponentTypeEnum = pgEnum("salary_component_type", [
+  "earning",
+  "deduction",
+]);
+export const salaryComponentAmountTypeEnum = pgEnum(
+  "salary_component_amount_type",
+  ["fixed", "formula"],
+);
+export const payrollEntryStatusEnum = pgEnum("payroll_entry_status", [
+  "calculated",
+  "finalized",
+  "cancelled",
+]);
+export const salarySlipStatusEnum = pgEnum("salary_slip_status", [
+  "draft",
+  "finalized",
+  "signed_off",
+]);
+export const payrollAccountingStatusEnum = pgEnum(
+  "payroll_accounting_status",
+  ["pending", "stubbed", "posted", "failed"],
+);
 
 // Organization Table
 export const Plain = pgTable("plain", {
@@ -443,6 +466,203 @@ export const payroll = pgTable("payroll", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// Salary Component Table
+export const salaryComponent = pgTable(
+  "salary_component",
+  {
+    id: serial("id").primaryKey(),
+    name: varchar("name", { length: 255 }).notNull(),
+    code: varchar("code", { length: 100 }).notNull(),
+    type: salaryComponentTypeEnum("type").notNull(),
+    amountType: salaryComponentAmountTypeEnum("amount_type")
+      .default("fixed")
+      .notNull(),
+    amount: decimal("amount", { precision: 15, scale: 2 }),
+    formula: text("formula"),
+    taxable: boolean("taxable").default(true).notNull(),
+    dependsOnPaymentDays: boolean("depends_on_payment_days")
+      .default(true)
+      .notNull(),
+    active: boolean("active").default(true).notNull(),
+    description: text("description"),
+    defaultAccount: varchar("default_account", { length: 255 }),
+    costCenter: varchar("cost_center", { length: 255 }),
+    isDeleted: boolean("is_deleted").default(false).notNull(),
+    createdBy: integer("created_by").references(() => users.id),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [unique().on(table.code)],
+);
+
+// Salary Structure Table
+export const salaryStructure = pgTable("salary_structure", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  effectiveFrom: date("effective_from").notNull(),
+  effectiveTo: date("effective_to"),
+  active: boolean("active").default(true).notNull(),
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const salaryStructureComponent = pgTable("salary_structure_component", {
+  id: serial("id").primaryKey(),
+  salaryStructureId: integer("salary_structure_id")
+    .notNull()
+    .references(() => salaryStructure.id),
+  salaryComponentId: integer("salary_component_id")
+    .notNull()
+    .references(() => salaryComponent.id),
+  amount: decimal("amount", { precision: 15, scale: 2 }),
+  formula: text("formula"),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const salaryStructureAssignment = pgTable(
+  "salary_structure_assignment",
+  {
+    id: serial("id").primaryKey(),
+    empId: integer("emp_id")
+      .notNull()
+      .references(() => Employee.userId),
+    salaryStructureId: integer("salary_structure_id")
+      .notNull()
+      .references(() => salaryStructure.id),
+    fromDate: date("from_date").notNull(),
+    toDate: date("to_date"),
+    baseSalary: decimal("base_salary", { precision: 15, scale: 2 }),
+    isActive: boolean("is_active").default(true).notNull(),
+    isDeleted: boolean("is_deleted").default(false).notNull(),
+    createdBy: integer("created_by").references(() => users.id),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+);
+
+export const additionalSalary = pgTable("additional_salary", {
+  id: serial("id").primaryKey(),
+  empId: integer("emp_id")
+    .notNull()
+    .references(() => Employee.userId),
+  salaryComponentId: integer("salary_component_id").references(
+    () => salaryComponent.id,
+  ),
+  componentName: varchar("component_name", { length: 255 }).notNull(),
+  type: salaryComponentTypeEnum("type").notNull(),
+  amount: decimal("amount", { precision: 15, scale: 2 }).notNull(),
+  payrollPeriodStart: date("payroll_period_start").notNull(),
+  payrollPeriodEnd: date("payroll_period_end").notNull(),
+  taxable: boolean("taxable").default(true).notNull(),
+  reason: text("reason"),
+  status: varchar("status", { length: 50 }).default("draft").notNull(),
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const payrollEntry = pgTable(
+  "payroll_entry",
+  {
+    id: serial("id").primaryKey(),
+    empId: integer("emp_id")
+      .notNull()
+      .references(() => Employee.userId),
+    salaryStructureId: integer("salary_structure_id").references(
+      () => salaryStructure.id,
+    ),
+    salaryStructureAssignmentId: integer(
+      "salary_structure_assignment_id",
+    ).references(() => salaryStructureAssignment.id),
+    periodStart: date("period_start").notNull(),
+    periodEnd: date("period_end").notNull(),
+    totalWorkingDays: integer("total_working_days").notNull(),
+    paidDays: integer("paid_days").notNull(),
+    grossPay: decimal("gross_pay", { precision: 15, scale: 2 }).notNull(),
+    taxableEarnings: decimal("taxable_earnings", {
+      precision: 15,
+      scale: 2,
+    }).notNull(),
+    totalDeductions: decimal("total_deductions", {
+      precision: 15,
+      scale: 2,
+    }).notNull(),
+    netPay: decimal("net_pay", { precision: 15, scale: 2 }).notNull(),
+    earnings: jsonb("earnings").$type<Record<string, unknown>[]>().notNull(),
+    deductions: jsonb("deductions").$type<Record<string, unknown>[]>().notNull(),
+    additionalSalaries: jsonb("additional_salaries")
+      .$type<Record<string, unknown>[]>()
+      .notNull(),
+    statutoryDeductions: jsonb("statutory_deductions")
+      .$type<Record<string, unknown>>()
+      .notNull(),
+    status: payrollEntryStatusEnum("status").default("calculated").notNull(),
+    accountingStatus: payrollAccountingStatusEnum("accounting_status")
+      .default("pending")
+      .notNull(),
+    accountingMessage: text("accounting_message"),
+    finalizedAt: timestamp("finalized_at"),
+    isDeleted: boolean("is_deleted").default(false).notNull(),
+    createdBy: integer("created_by").references(() => users.id),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [unique().on(table.empId, table.periodStart, table.periodEnd)],
+);
+
+export const salarySlip = pgTable(
+  "salary_slip",
+  {
+    id: serial("id").primaryKey(),
+    payrollEntryId: integer("payroll_entry_id")
+      .notNull()
+      .references(() => payrollEntry.id),
+    slipNumber: varchar("slip_number", { length: 100 }).notNull(),
+    employeeSnapshot: jsonb("employee_snapshot")
+      .$type<Record<string, unknown>>()
+      .notNull(),
+    earnings: jsonb("earnings").$type<Record<string, unknown>[]>().notNull(),
+    deductions: jsonb("deductions").$type<Record<string, unknown>[]>().notNull(),
+    grossPay: decimal("gross_pay", { precision: 15, scale: 2 }).notNull(),
+    totalDeductions: decimal("total_deductions", {
+      precision: 15,
+      scale: 2,
+    }).notNull(),
+    netPay: decimal("net_pay", { precision: 15, scale: 2 }).notNull(),
+    status: salarySlipStatusEnum("status").default("draft").notNull(),
+    isLocked: boolean("is_locked").default(false).notNull(),
+    finalizedAt: timestamp("finalized_at"),
+    signedOffAt: timestamp("signed_off_at"),
+    isDeleted: boolean("is_deleted").default(false).notNull(),
+    createdBy: integer("created_by").references(() => users.id),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [unique().on(table.payrollEntryId), unique().on(table.slipNumber)],
+);
+
+export const payrollAccounting = pgTable("payroll_accounting", {
+  id: serial("id").primaryKey(),
+  payrollEntryId: integer("payroll_entry_id")
+    .notNull()
+    .references(() => payrollEntry.id),
+  status: payrollAccountingStatusEnum("status").default("stubbed").notNull(),
+  journalEntryId: integer("journal_entry_id"),
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+  message: text("message"),
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Training and Development Table
 export const trainingAndDevelopment = pgTable("training_and_development", {
   id: serial("id").primaryKey(),
@@ -600,6 +820,90 @@ export const payrollRelations = relations(payroll, ({ one }) => ({
   }),
 }));
 
+export const salaryStructureRelations = relations(
+  salaryStructure,
+  ({ many }) => ({
+    components: many(salaryStructureComponent),
+    assignments: many(salaryStructureAssignment),
+  }),
+);
+
+export const salaryStructureComponentRelations = relations(
+  salaryStructureComponent,
+  ({ one }) => ({
+    structure: one(salaryStructure, {
+      fields: [salaryStructureComponent.salaryStructureId],
+      references: [salaryStructure.id],
+    }),
+    component: one(salaryComponent, {
+      fields: [salaryStructureComponent.salaryComponentId],
+      references: [salaryComponent.id],
+    }),
+  }),
+);
+
+export const salaryStructureAssignmentRelations = relations(
+  salaryStructureAssignment,
+  ({ one }) => ({
+    employee: one(Employee, {
+      fields: [salaryStructureAssignment.empId],
+      references: [Employee.userId],
+    }),
+    structure: one(salaryStructure, {
+      fields: [salaryStructureAssignment.salaryStructureId],
+      references: [salaryStructure.id],
+    }),
+  }),
+);
+
+export const additionalSalaryRelations = relations(
+  additionalSalary,
+  ({ one }) => ({
+    employee: one(Employee, {
+      fields: [additionalSalary.empId],
+      references: [Employee.userId],
+    }),
+    component: one(salaryComponent, {
+      fields: [additionalSalary.salaryComponentId],
+      references: [salaryComponent.id],
+    }),
+  }),
+);
+
+export const payrollEntryRelations = relations(payrollEntry, ({ one, many }) => ({
+  employee: one(Employee, {
+    fields: [payrollEntry.empId],
+    references: [Employee.userId],
+  }),
+  structure: one(salaryStructure, {
+    fields: [payrollEntry.salaryStructureId],
+    references: [salaryStructure.id],
+  }),
+  assignment: one(salaryStructureAssignment, {
+    fields: [payrollEntry.salaryStructureAssignmentId],
+    references: [salaryStructureAssignment.id],
+  }),
+  salarySlips: many(salarySlip),
+  accountingEntries: many(payrollAccounting),
+}));
+
+export const salarySlipRelations = relations(salarySlip, ({ one }) => ({
+  payrollEntry: one(payrollEntry, {
+    fields: [salarySlip.payrollEntryId],
+    references: [payrollEntry.id],
+  }),
+}));
+
+export const payrollAccountingRelations = relations(
+  payrollAccounting,
+  ({ one }) => ({
+    payrollEntry: one(payrollEntry, {
+      fields: [payrollAccounting.payrollEntryId],
+      references: [payrollEntry.id],
+    }),
+  }),
+);
+
 export const trainingAndDevelopmentRelations = relations(
   trainingAndDevelopment,
   ({ one }) => ({
@@ -645,4 +949,3 @@ export const organizationsRelations = relations(organizations, ({ one }) => ({
     references: [users.id],
   }),
 }));
-
