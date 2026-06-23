@@ -85,6 +85,13 @@
       "when": 1782129972313,
       "tag": "0011_wooden_rogue",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1782173031103,
+      "tag": "0012_silent_mongu",
+      "breakpoints": true
     }
   ]
 }

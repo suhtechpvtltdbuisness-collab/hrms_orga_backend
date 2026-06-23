@@ -2,6 +2,8 @@ import UserRepository from "../repository/user.repo.js";
 import { users } from "../db/schema.js";
 import bcrypt from "bcrypt";
 import { subscriptionService } from "./subscriptionServices.js";
+import { emailService } from "./emailService.js";
+import crypto from "crypto";
 
 class UserServices {
   private userRepo: UserRepository;
@@ -17,8 +19,8 @@ class UserServices {
     }
 
     // Validate required fields
-    if (!data.name || !data.email || !data.password) {
-      throw new Error("Name, email, and password are required");
+    if (!data.name || !data.email) {
+      throw new Error("Name and email are required");
     }
 
     if (data.isAdmin) {
@@ -30,8 +32,13 @@ class UserServices {
 
     await subscriptionService.assertCanAddEmployee(currentUser.id);
 
+    // Generate random password if not provided
+    const plainPassword = (data.password && data.password.trim() !== "")
+      ? data.password
+      : crypto.randomBytes(6).toString("hex");
+
     // Hash password
-    const hashedPassword = await bcrypt.hash(data.password, 10);
+    const hashedPassword = await bcrypt.hash(plainPassword, 10);
     const userData = {
       ...data,
       password: hashedPassword,
@@ -41,10 +48,30 @@ class UserServices {
     };
 
     const result = await this.userRepo.createUser(userData, currentUser);
+
+    // Send email with credentials to employee asynchronously
+    emailService.sendEmployeeCredentialsEmail(data.email, data.name, plainPassword)
+      .then((sent) => {
+        if (sent) {
+          console.log(`Credentials email sent to employee: ${data.email}`);
+        } else {
+          console.error(`Failed to send credentials email to employee: ${data.email}`);
+        }
+      })
+      .catch((err) => {
+        console.error(`Error sending credentials email to employee: ${data.email}`, err);
+      });
+
     return {
       message: "successfully created user",
       success: true,
-      data: result,
+      data: {
+        ...result,
+        user: {
+          ...result.user,
+          employeeId: `EMP${1000 + result.user.id}`,
+        },
+      },
     };
   }
   async getUserById(id: number) {
@@ -55,7 +82,10 @@ class UserServices {
     return {
       message: "successfully fetched user",
       success: true,
-      data: result,
+      data: {
+        ...result,
+        employeeId: `EMP${1000 + result.id}`,
+      },
     };
   }
   async getEmployeeById(id: number) {
@@ -72,10 +102,19 @@ class UserServices {
 
   async getAllEmployeesByAdminId(adminId: number) {
     const result = await this.userRepo.getAllEmployeesByAdminId(adminId);
+    const mapped = result.map((item) => ({
+      ...item,
+      user: item.user
+        ? {
+            ...item.user,
+            employeeId: `EMP${1000 + item.user.id}`,
+          }
+        : null,
+    }));
     return {
       message: "successfully fetched employees by admin",
       success: true,
-      data: result,
+      data: mapped,
     };
   }
 
@@ -87,7 +126,15 @@ class UserServices {
     return {
       message: "successfully fetched employee details",
       success: true,
-      data: result,
+      data: {
+        ...result,
+        user: result.user
+          ? {
+              ...result.user,
+              employeeId: `EMP${1000 + result.user.id}`,
+            }
+          : null,
+      },
     };
   }
 
@@ -121,7 +168,10 @@ class UserServices {
     return {
       message: "successfully updated user",
       success: true,
-      data: result,
+      data: {
+        ...result,
+        employeeId: `EMP${1000 + result.id}`,
+      },
     };
   }
 

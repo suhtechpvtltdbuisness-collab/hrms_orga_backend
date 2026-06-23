@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import bcrypt from "bcrypt";
+import crypto from "crypto";
 import { OAuth2Client } from "google-auth-library";
 import { db } from "../db/connection.js";
 import { users } from "../db/schema.js";
@@ -7,8 +8,13 @@ import { subscriptionService } from "../services/subscriptionServices.js";
 import { generateTokens, verifyToken } from "../utils/jwt.js";
 import { setAuthCookies, clearAuthCookies } from "../utils/authCookies.js";
 import { eq, and } from "drizzle-orm";
+import { emailService } from "../services/emailService.js";
 
-// Register new user (admin only)
+// Cooldown map for rate-limiting resend verification
+const resendCooldowns = new Map<string, number>();
+const COOLDOWN_MS = 60 * 1000; // 60 seconds cooldown
+
+// Register new user
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
     const {
@@ -52,6 +58,10 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Generate secure 6-digit OTP code and expiration (15 minutes)
+    const verificationOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    const verificationExpires = new Date(Date.now() + 15 * 60 * 1000);
+
     // Create user with type admin
     const [newUser] = await db
       .insert(users)
@@ -72,34 +82,18 @@ export const register = async (req: Request, res: Response): Promise<void> => {
         pancardNo: pancardNo || null,
         active: true,
         isDeleted: false,
+        isEmailVerified: false, // Default is false, user must verify
+        emailVerificationToken: verificationOtp,
+        emailVerificationExpires: verificationExpires,
       })
       .returning();
 
-    // Generate tokens
-    const tokens = generateTokens({
-      userId: newUser.id,
-      email: newUser.email,
-      type: newUser.type,
-      roleId: newUser.roleId,
-    });
-
-    setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
-
-    const subscription = await subscriptionService.getSubscriptionSummary(
-      newUser.id,
-    );
-
-    // Remove password from response
-    const { password: _, ...userWithoutPassword } = newUser;
+    // Send verification email through Nodemailer SMTP
+    await emailService.sendOtpEmail(newUser.email, newUser.name, verificationOtp);
 
     res.status(201).json({
       success: true,
-      message: "User registered successfully",
-      data: {
-        user: userWithoutPassword,
-        tokens,
-        subscription,
-      },
+      message: "Verification OTP has been sent. Please check your inbox.",
     });
   } catch (error) {
     console.error("Registration error:", error);
@@ -145,6 +139,15 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       res.status(403).json({
         success: false,
         message: "Account is inactive. Please contact administrator.",
+      });
+      return;
+    }
+
+    // Block login if email is not verified
+    if (!user.isEmailVerified) {
+      res.status(403).json({
+        success: false,
+        message: "Please verify your email before logging in.",
       });
       return;
     }
@@ -196,7 +199,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
-// Logout user (client-side token removal, but included for completeness)
+// Logout user
 export const logout = async (req: Request, res: Response): Promise<void> => {
   try {
     clearAuthCookies(res);
@@ -317,6 +320,7 @@ export const getProfile = async (
           address: user.address,
           active: user.active,
           profilePic: user.profilePic,
+          isEmailVerified: user.isEmailVerified,
         },
         subscription,
         plan:
@@ -424,6 +428,7 @@ export const googleLogin = async (req: Request, res: Response): Promise<void> =>
           active: true,
           isDeleted: false,
           profilePic: picture || null,
+          isEmailVerified: true, // Verified by Google OAuth
         })
         .returning();
       user = newUser;
@@ -463,3 +468,331 @@ export const googleLogin = async (req: Request, res: Response): Promise<void> =>
     });
   }
 };
+
+// Verify Email
+export const verifyEmail = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { token } = req.query;
+
+    if (!token || typeof token !== "string") {
+      res.status(400).json({
+        success: false,
+        message: "Verification token is required",
+      });
+      return;
+    }
+
+    // Find user by token
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(and(eq(users.emailVerificationToken, token), eq(users.isDeleted, false)))
+      .limit(1);
+
+    if (!user) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid or expired verification token",
+      });
+      return;
+    }
+
+    // Check expiration
+    if (user.emailVerificationExpires && new Date() > user.emailVerificationExpires) {
+      res.status(400).json({
+        success: false,
+        message: "Verification link has expired. Please request a new one.",
+      });
+      return;
+    }
+
+    // Mark user verified and remove token details
+    const [updatedUser] = await db
+      .update(users)
+      .set({
+        isEmailVerified: true,
+        emailVerificationToken: null,
+        emailVerificationExpires: null,
+      })
+      .where(eq(users.id, user.id))
+      .returning();
+
+    // Trigger welcome email asynchronously
+    emailService.sendWelcomeEmail(updatedUser.email, updatedUser.name).catch((err) => {
+      console.error("Failed to send welcome email:", err);
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Email verified successfully. You can now login.",
+    });
+  } catch (error) {
+    console.error("Email verification error:", error);
+    // Never expose internal error messages to client
+    res.status(500).json({
+      success: false,
+      message: "An internal server error occurred. Please try again later.",
+    });
+  }
+};
+
+// Resend Verification Email
+export const resendVerification = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email } = req.body;
+
+    if (!email || typeof email !== "string") {
+      res.status(400).json({
+        success: false,
+        message: "Email address is required",
+      });
+      return;
+    }
+
+    // Rate-limiting check
+    const lastRequest = resendCooldowns.get(email);
+    if (lastRequest && Date.now() - lastRequest < COOLDOWN_MS) {
+      const waitSec = Math.ceil((COOLDOWN_MS - (Date.now() - lastRequest)) / 1000);
+      res.status(429).json({
+        success: false,
+        message: `Please wait ${waitSec} seconds before requesting another verification email.`,
+      });
+      return;
+    }
+
+    // Find user
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(and(eq(users.email, email), eq(users.isDeleted, false)))
+      .limit(1);
+
+    if (!user) {
+      // Don't leak details for user enumeration
+      res.status(200).json({
+        success: true,
+        message: "Verification email has been sent.",
+      });
+      return;
+    }
+
+    if (user.isEmailVerified) {
+      res.status(400).json({
+        success: false,
+        message: "Email is already verified. Please login.",
+      });
+      return;
+    }
+
+    // Generate new OTP and expiration (15 minutes)
+    const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    const newExpires = new Date(Date.now() + 15 * 60 * 1000);
+
+    // Save OTP and invalidate previous token
+    await db
+      .update(users)
+      .set({
+        emailVerificationToken: newOtp,
+        emailVerificationExpires: newExpires,
+      })
+      .where(eq(users.id, user.id));
+
+    // Update cooldown map
+    resendCooldowns.set(email, Date.now());
+
+    // Send new OTP email
+    await emailService.sendOtpEmail(user.email, user.name, newOtp);
+
+    res.status(200).json({
+      success: true,
+      message: "Verification OTP has been sent.",
+    });
+  } catch (error) {
+    console.error("Resend verification error:", error);
+    res.status(500).json({
+      success: false,
+      message: "An internal server error occurred. Please try again later.",
+    });
+  }
+};
+
+// Verify OTP
+export const verifyOtp = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email, otp } = req.body;
+
+    if (!email || !otp) {
+      res.status(400).json({
+        success: false,
+        message: "Email and OTP are required",
+      });
+      return;
+    }
+
+    // Find user
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(and(eq(users.email, email), eq(users.isDeleted, false)))
+      .limit(1);
+
+    if (!user) {
+      res.status(400).json({
+        success: false,
+        message: "User not found",
+      });
+      return;
+    }
+
+    if (user.isEmailVerified) {
+      res.status(400).json({
+        success: false,
+        message: "Email is already verified",
+      });
+      return;
+    }
+
+    if (!user.emailVerificationToken || user.emailVerificationToken !== otp) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid OTP code",
+      });
+      return;
+    }
+
+    if (user.emailVerificationExpires && new Date() > user.emailVerificationExpires) {
+      res.status(400).json({
+        success: false,
+        message: "OTP code has expired. Please request a new one.",
+      });
+      return;
+    }
+
+    // Verify user
+    const [updatedUser] = await db
+      .update(users)
+      .set({
+        isEmailVerified: true,
+        emailVerificationToken: null,
+        emailVerificationExpires: null,
+      })
+      .where(eq(users.id, user.id))
+      .returning();
+
+    // Trigger welcome email asynchronously
+    emailService.sendWelcomeEmail(updatedUser.email, updatedUser.name).catch((err) => {
+      console.error("Failed to send welcome email:", err);
+    });
+
+    // Generate tokens to log them in directly
+    const tokens = generateTokens({
+      userId: updatedUser.id,
+      email: updatedUser.email,
+      type: updatedUser.type,
+      roleId: updatedUser.roleId,
+    });
+
+    setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
+
+    const subscription = await subscriptionService.getSubscriptionSummary(
+      updatedUser.id,
+    );
+
+    const { password: _, ...userWithoutPassword } = updatedUser;
+
+    res.status(200).json({
+      success: true,
+      message: "Email verified and logged in successfully",
+      data: {
+        user: userWithoutPassword,
+        tokens,
+        subscription,
+      },
+    });
+  } catch (error) {
+    console.error("OTP verification error:", error);
+    res.status(500).json({
+      success: false,
+      message: "An internal server error occurred",
+    });
+  }
+};
+
+// Resend OTP Code
+export const resendOtp = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email } = req.body;
+
+    if (!email || typeof email !== "string") {
+      res.status(400).json({
+        success: false,
+        message: "Email address is required",
+      });
+      return;
+    }
+
+    // Rate-limiting check
+    const lastRequest = resendCooldowns.get(email);
+    if (lastRequest && Date.now() - lastRequest < COOLDOWN_MS) {
+      const waitSec = Math.ceil((COOLDOWN_MS - (Date.now() - lastRequest)) / 1000);
+      res.status(429).json({
+        success: false,
+        message: `Please wait ${waitSec} seconds before requesting another code.`,
+      });
+      return;
+    }
+
+    // Find user
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(and(eq(users.email, email), eq(users.isDeleted, false)))
+      .limit(1);
+
+    if (!user) {
+      res.status(200).json({
+        success: true,
+        message: "Verification code has been sent.",
+      });
+      return;
+    }
+
+    if (user.isEmailVerified) {
+      res.status(400).json({
+        success: false,
+        message: "Email is already verified. Please login.",
+      });
+      return;
+    }
+
+    // Generate new OTP and expiration (15 minutes)
+    const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    const newExpires = new Date(Date.now() + 15 * 60 * 1000);
+
+    await db
+      .update(users)
+      .set({
+        emailVerificationToken: newOtp,
+        emailVerificationExpires: newExpires,
+      })
+      .where(eq(users.id, user.id));
+
+    // Update cooldown map
+    resendCooldowns.set(email, Date.now());
+
+    // Send new OTP email
+    await emailService.sendOtpEmail(user.email, user.name, newOtp);
+
+    res.status(200).json({
+      success: true,
+      message: "Verification code has been sent.",
+    });
+  } catch (error) {
+    console.error("Resend OTP error:", error);
+    res.status(500).json({
+      success: false,
+      message: "An internal server error occurred",
+    });
+  }
+};
+

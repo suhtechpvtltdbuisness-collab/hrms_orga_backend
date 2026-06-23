@@ -28,6 +28,7 @@ router.get("/health", (req, res) => {
 
 // Auth routes
 router.use("/auth", authRouter);
+router.use("/api/auth", authRouter);
 // Department routes
 router.use("/departments", departmentRouter);
 router.use("/designation", desiganationRouter);
