@@ -142,9 +142,82 @@ export class AttendanceRepository {
       }
     }
 
-    return await attendanceJoins()
+    const markedAttendances = await attendanceJoins()
       .where(and(...conditions))
       .orderBy(attendance.attendanceDate);
+
+    // If month filter is applied, we don't synthesize for a specific single day
+    if (filters.month) {
+      return markedAttendances;
+    }
+
+    // Default target date for synthesis
+    const targetDate = filters.date || new Date().toISOString().split("T")[0];
+
+    // Fetch all active employees
+    const orgCondition = [
+      eq(users.isDeleted, false),
+      eq(users.active, true)
+    ];
+    if (currentUser.roleId !== 0 && currentUser.organizationId) {
+      orgCondition.push(eq(users.organizationId, currentUser.organizationId));
+    }
+    const allActiveEmployees = await db
+      .select({
+        id: users.id,
+        name: users.name,
+        organizationId: users.organizationId,
+        departmentName: department.departmentName,
+        shift: employment.assignedShift,
+      })
+      .from(users)
+      .innerJoin(Employee, eq(Employee.userId, users.id))
+      .leftJoin(employment, eq(employment.employeeId, users.id))
+      .leftJoin(department, eq(employment.departmentId, department.id))
+      .where(and(...orgCondition));
+
+    const markedUserIds = new Set(markedAttendances.map(a => a.empId));
+    const combined = [...markedAttendances];
+
+    for (const emp of allActiveEmployees) {
+      if (!markedUserIds.has(emp.id)) {
+        // Apply employeeName filter
+        if (filters.employeeName && !emp.name.toLowerCase().includes(filters.employeeName.toLowerCase())) {
+          continue;
+        }
+        // Apply status filter (synthesized has status 'absent')
+        if (filters.status) {
+          const statusVal = filters.status.toLowerCase();
+          if (statusVal !== "absent") {
+            continue;
+          }
+        }
+        // Apply leaveType filter (synthesized has no leave type)
+        if (filters.leaveType) {
+          continue;
+        }
+
+        combined.push({
+          id: null as any,
+          series: "-",
+          empId: emp.id,
+          empName: emp.name,
+          departmentName: emp.departmentName,
+          attendanceDate: targetDate,
+          leaveType: null,
+          status: "absent" as any,
+          period: null,
+          shift: emp.shift,
+          lateEntry: false,
+          earlyExit: false,
+          markedBy: 0,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      }
+    }
+
+    return combined;
   }
 
   async getAttendanceById(id: number) {

@@ -43,6 +43,7 @@ class UserServices {
       ...data,
       password: hashedPassword,
       createdBy: currentUser.id,
+      organizationId: currentUser.organizationId,
       roleId: 2, // Added by admin/super admin, so role is employee (2)
       isAdmin: false,
     };
