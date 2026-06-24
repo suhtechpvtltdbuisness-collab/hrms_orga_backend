@@ -445,7 +445,7 @@ export class AttendanceService {
 
   async getMyAttendance(currentUser: typeof users.$inferSelect, month?: string) {
     await validateEmployee(currentUser.id);
-    const list = await this.attendanceRepo.getAttendancesByEmployeeId(currentUser.id, month);
+    const list = await this.attendanceRepo.getAttendancesByEmployeeId(currentUser.id, currentUser, month);
     return list.map((r) => this.adjustAttendanceStatus(r));
   }
 
