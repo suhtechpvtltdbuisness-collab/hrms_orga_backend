@@ -143,8 +143,8 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Block login if email is not verified
-    if (!user.isEmailVerified) {
+    // Block login if email is not verified (only for admin users)
+    if (!user.isEmailVerified && user.type === "admin") {
       res.status(403).json({
         success: false,
         message: "Please verify your email before logging in.",
