@@ -253,7 +253,7 @@ export class PayrollModuleRepository {
         assignment: salaryStructureAssignment,
         employeeName: users.name,
         structureName: salaryStructure.name,
-        departmentName: department.name,
+        departmentName: department.departmentName,
       })
       .from(salaryStructureAssignment)
       .innerJoin(users, eq(salaryStructureAssignment.empId, users.id))
@@ -439,7 +439,7 @@ export class PayrollModuleRepository {
         payrollEntry,
         employeeName: users.name,
         structureName: salaryStructure.name,
-        departmentName: department.name,
+        departmentName: department.departmentName,
       })
       .from(payrollEntry)
       .innerJoin(users, eq(payrollEntry.empId, users.id))
@@ -457,7 +457,7 @@ export class PayrollModuleRepository {
         employeeName: users.name,
         employeeEmail: users.email,
         structureName: salaryStructure.name,
-        departmentName: department.name,
+        departmentName: department.departmentName,
       })
       .from(payrollEntry)
       .innerJoin(users, eq(payrollEntry.empId, users.id))
@@ -571,7 +571,7 @@ export class PayrollModuleRepository {
         periodStart: payrollEntry.periodStart,
         periodEnd: payrollEntry.periodEnd,
         netPay: payrollEntry.netPay,
-        departmentName: department.name,
+        departmentName: department.departmentName,
       })
       .from(payrollEntry)
       .innerJoin(users, eq(payrollEntry.empId, users.id))

@@ -21,7 +21,7 @@ const attendanceSelectFields = {
   series: attendance.series,
   empId: attendance.empId,
   empName: users.name,
-  departmentName: department.name,
+  departmentName: department.departmentName,
   attendanceDate: attendance.attendanceDate,
   leaveType: attendance.leaveType,
   status: attendance.status,
@@ -69,7 +69,7 @@ export class AttendanceRepository {
       .select({
         empId: users.id,
         empName: users.name,
-        departmentName: department.name,
+        departmentName: department.departmentName,
         shift: employment.assignedShift,
       })
       .from(users)

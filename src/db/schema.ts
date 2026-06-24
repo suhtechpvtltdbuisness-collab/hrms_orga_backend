@@ -250,21 +250,22 @@ export const employment = pgTable("employment", {
 // Department Table
 export const department: any = pgTable("department", {
   id: serial("id").primaryKey(),
-  name: varchar("name", { length: 255 }).notNull(),
-  code: varchar("code", { length: 50 }).notNull(),
-  head: varchar("head", { length: 255 }),
-  location: varchar("location", { length: 255 }),
+  organizationId: integer("organization_id")
+    .references((): any => organizations.id),
+  departmentName: varchar("department_name", { length: 100 }).notNull(),
+  departmentCode: varchar("department_code", { length: 50 }).notNull(),
   description: text("description"),
-  parentId: integer("parent_id"),
-  adminId: integer("admin_id")
-    .notNull()
-    .references(() => users.id),
-  status: boolean("status").default(true).notNull(),
+  managerId: integer("manager_id").references(() => Employee.userId),
+  status: varchar("status", { length: 20 }).default("Active").notNull(),
+  employeeCount: integer("employee_count").default(0).notNull(),
   isDeleted: boolean("is_deleted").default(false).notNull(),
-  createdBy: integer("created_by"),
+  createdBy: integer("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => [
+  unique().on(table.organizationId, table.departmentName),
+  unique().on(table.organizationId, table.departmentCode),
+]);
 
 // Designation Table
 export const designation = pgTable("designation", {
