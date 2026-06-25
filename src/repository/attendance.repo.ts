@@ -30,6 +30,8 @@ const attendanceSelectFields = {
   lateEntry: attendance.lateEntry,
   earlyExit: attendance.earlyExit,
   markedBy: attendance.markedBy,
+  checkIn: attendance.checkIn,
+  checkOut: attendance.checkOut,
   createdAt: attendance.createdAt,
   updatedAt: attendance.updatedAt,
 };
@@ -211,6 +213,8 @@ export class AttendanceRepository {
           lateEntry: false,
           earlyExit: false,
           markedBy: 0,
+          checkIn: null,
+          checkOut: null,
           createdAt: new Date(),
           updatedAt: new Date(),
         });

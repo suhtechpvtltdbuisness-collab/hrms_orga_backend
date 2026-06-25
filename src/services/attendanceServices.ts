@@ -8,6 +8,32 @@ import { eq } from "drizzle-orm";
 
 type AttendanceStatus = typeof attendance.$inferSelect.status;
 type LeaveType = NonNullable<typeof attendance.$inferSelect.leaveType>;
+type AdminAttendanceRecord = {
+  date?: string;
+  attendanceDate?: string;
+  selectedDate?: string;
+  status?: string;
+  attendanceStatus?: string;
+  leaveType?: string;
+  shift?: string;
+};
+
+type AdminAttendanceBody = {
+  empId?: number | string;
+  employeeId?: number | string;
+  employee?: number | string | { id?: number | string; userId?: number | string };
+  records?: Array<AdminAttendanceRecord | string>;
+  record?: AdminAttendanceRecord;
+  dates?: string[];
+  selectedDates?: string[];
+  date?: string;
+  attendanceDate?: string;
+  selectedDate?: string;
+  status?: string;
+  attendanceStatus?: string;
+  leaveType?: string;
+  shift?: string;
+};
 
 const VALID_STATUSES: AttendanceStatus[] = [
   "present",
@@ -44,6 +70,92 @@ function validateStatus(status: string): AttendanceStatus {
     );
   }
   return status as AttendanceStatus;
+}
+
+function validateAttendanceDate(date: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new Error(`Invalid attendance date "${date}". Use YYYY-MM-DD`);
+  }
+
+  const [year, month, day] = date.split("-").map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() !== month - 1 ||
+    parsed.getUTCDate() !== day
+  ) {
+    throw new Error(`Invalid attendance date "${date}". Use YYYY-MM-DD`);
+  }
+
+  return date;
+}
+
+function getFullDayTimes(date: string) {
+  // Attendance is currently operated in India Standard Time. Supplying an
+  // explicit offset keeps these times stable when the API runs on UTC hosts.
+  return {
+    checkIn: new Date(`${date}T10:00:00+05:30`),
+    checkOut: new Date(`${date}T18:00:00+05:30`),
+  };
+}
+
+function normalizeAdminAttendanceBody(body: AdminAttendanceBody = {}) {
+  const employeeObject =
+    typeof body.employee === "object" && body.employee !== null
+      ? body.employee
+      : null;
+  const rawEmpId =
+    body.empId ??
+    body.employeeId ??
+    (typeof body.employee !== "object" ? body.employee : undefined) ??
+    employeeObject?.userId ??
+    employeeObject?.id;
+  const empId = Number(rawEmpId);
+  if (!Number.isInteger(empId) || empId <= 0) {
+    throw new Error("A valid empId or employeeId is required");
+  }
+
+  const defaultStatus = body.status ?? body.attendanceStatus ?? "present";
+  const suppliedRecords = body.records ?? (body.record ? [body.record] : undefined);
+  let records: AdminAttendanceRecord[] | undefined = suppliedRecords?.map(
+    (record) =>
+      typeof record === "string"
+        ? { date: record, status: defaultStatus }
+        : {
+            ...record,
+            date:
+              record.date ?? record.attendanceDate ?? record.selectedDate,
+            status:
+              record.status ?? record.attendanceStatus ?? defaultStatus,
+          },
+  );
+
+  if (!records?.length) {
+    const dates =
+      body.dates ??
+      body.selectedDates ??
+      [body.date ?? body.attendanceDate ?? body.selectedDate].filter(
+        (date): date is string => Boolean(date),
+      );
+
+    if (dates.length > 0) {
+      records = dates.map((date) => ({
+        date,
+        status: defaultStatus,
+        leaveType: body.leaveType,
+        shift: body.shift,
+      }));
+    }
+  }
+
+  if (!Array.isArray(records) || records.length === 0) {
+    const receivedFields = Object.keys(body);
+    throw new Error(
+      `No attendance date was provided. Use date, attendanceDate, selectedDate, dates, selectedDates, or records. Received fields: ${receivedFields.join(", ") || "none"}`,
+    );
+  }
+
+  return { empId, records };
 }
 
 async function validateEmployee(empId: number) {
@@ -211,31 +323,31 @@ export class AttendanceService {
   }
 
   async markAttendanceBulk(
-    body: {
-      empId: number;
-      records: { date: string; status: string; leaveType?: string; shift?: string }[];
-    },
+    body: AdminAttendanceBody = {},
     currentUser: typeof users.$inferSelect,
   ) {
     if (!currentUser.isAdmin) {
       throw new Error("Only admins can mark attendance bulk");
     }
 
-    const { empId, records } = body;
-    if (!empId || !records || !Array.isArray(records)) {
-      throw new Error("empId and records array are required");
-    }
+    const { empId, records } = normalizeAdminAttendanceBody(body);
 
     await validateEmployee(empId);
 
     const results = [];
     for (const r of records) {
-      validateStatus(r.status);
-      if (r.status === "on_leave" && !r.leaveType) {
+      if (!r || !r.date || !r.status) {
+        throw new Error("Each attendance record requires date and status");
+      }
+
+      validateAttendanceDate(r.date);
+      const normalizedStatus = r.status.trim().toLowerCase().replace(/[\s-]+/g, "_");
+      validateStatus(normalizedStatus);
+      if (normalizedStatus === "on_leave" && !r.leaveType) {
         throw new Error(`leaveType is required for date ${r.date} when status is on_leave`);
       }
 
-      let statusVal = r.status as AttendanceStatus;
+      let statusVal = normalizedStatus as AttendanceStatus;
       let periodVal = null;
       if (statusVal === "present") {
         periodVal = "full_time";
@@ -245,6 +357,13 @@ export class AttendanceService {
         statusVal = "present";
         periodVal = "half_day";
       }
+
+      const fullDayTimes =
+        normalizedStatus === "present" ? getFullDayTimes(r.date) : null;
+      const attendanceTimes = {
+        checkIn: fullDayTimes?.checkIn ?? null,
+        checkOut: fullDayTimes?.checkOut ?? null,
+      };
 
       const existing = await this.attendanceRepo.getAttendanceByEmpAndDate(
         empId,
@@ -257,6 +376,9 @@ export class AttendanceService {
           period: periodVal,
           leaveType: (statusVal === "on_leave" ? r.leaveType : null) as LeaveType | null,
           shift: r.shift ?? null,
+          ...attendanceTimes,
+          lateEntry: false,
+          earlyExit: false,
           markedBy: currentUser.id,
         });
         results.push(updated[0]);
@@ -273,6 +395,7 @@ export class AttendanceService {
           lateEntry: false,
           earlyExit: false,
           markedBy: currentUser.id,
+          ...attendanceTimes,
           isDeleted: false,
         });
         results.push(created[0]);
