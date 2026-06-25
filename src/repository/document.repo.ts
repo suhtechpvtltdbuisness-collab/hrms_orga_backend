@@ -14,7 +14,7 @@ export class DocumentRepository {
         employee: Employee,
       })
       .from(document)
-      .leftJoin(Employee, eq(document.empId, Employee.id));
+      .leftJoin(Employee, eq(document.empId, Employee.userId));
   }
 
   async getDocumentById(id: number) {
@@ -24,7 +24,7 @@ export class DocumentRepository {
         employee: Employee,
       })
       .from(document)
-      .leftJoin(Employee, eq(document.empId, Employee.id))
+      .leftJoin(Employee, eq(document.empId, Employee.userId))
       .where(eq(document.id, id));
   }
 
@@ -35,7 +35,7 @@ export class DocumentRepository {
         employee: Employee,
       })
       .from(document)
-      .leftJoin(Employee, eq(document.empId, Employee.id))
+      .leftJoin(Employee, eq(document.empId, Employee.userId))
       .where(eq(document.empId, empId));
   }
 
@@ -65,7 +65,7 @@ export class DocumentRepository {
     return await db
       .update(document)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(document.empId, employeeResult[0].id))
+      .where(eq(document.empId, employeeResult[0].userId))
       .returning();
   }
 
@@ -86,7 +86,7 @@ export class DocumentRepository {
 
     return await db
       .delete(document)
-      .where(eq(document.empId, employeeResult[0].id))
+      .where(eq(document.empId, employeeResult[0].userId))
       .returning();
   }
 }

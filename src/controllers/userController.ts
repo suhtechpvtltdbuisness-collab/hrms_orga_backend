@@ -42,7 +42,10 @@ class UserController {
   ) {
     try {
       const adminId = Number(req.params.adminId);
-      const result = await this.userServices.getAllEmployeesByAdminId(adminId);
+      const page = req.query.page ? Number(req.query.page) : undefined;
+      const limit = req.query.limit ? Number(req.query.limit) : undefined;
+      const search = req.query.search ? String(req.query.search) : undefined;
+      const result = await this.userServices.getAllEmployeesByAdminId(adminId, page, limit, search);
       res.status(200).json(result);
     } catch (error) {
       next(error);

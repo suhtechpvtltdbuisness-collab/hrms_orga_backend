@@ -40,7 +40,7 @@ class PayrollRepository {
         employee: Employee,
       })
       .from(payroll)
-      .innerJoin(Employee, eq(payroll.empId, Employee.id))
+      .innerJoin(Employee, eq(payroll.empId, Employee.userId))
       .where(and(eq(Employee.userId, userId), eq(payroll.isDeleted, false)));
     return result;
   }
@@ -80,7 +80,7 @@ class PayrollRepository {
     const result = await db
       .update(payroll)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(payroll.empId, employeeResult[0].id))
+      .where(eq(payroll.empId, employeeResult[0].userId))
       .returning();
     return result[0];
   }
@@ -108,7 +108,7 @@ class PayrollRepository {
     const result = await db
       .update(payroll)
       .set({ isDeleted: true, updatedAt: new Date() })
-      .where(eq(payroll.empId, employeeResult[0].id))
+      .where(eq(payroll.empId, employeeResult[0].userId))
       .returning();
     return result[0];
   }

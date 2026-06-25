@@ -1,5 +1,5 @@
 import UserRepository from "../repository/user.repo.js";
-import { users } from "../db/schema.js";
+import { document, employment, payroll, users } from "../db/schema.js";
 import bcrypt from "bcrypt";
 import { subscriptionService } from "./subscriptionServices.js";
 import { emailService } from "./emailService.js";
@@ -11,7 +11,11 @@ class UserServices {
     this.userRepo = new UserRepository();
   }
   async createUser(
-    data: typeof users.$inferInsert,
+    data: typeof users.$inferInsert & {
+      employment?: Omit<typeof employment.$inferInsert, "employeeId"> | null;
+      payroll?: Omit<typeof payroll.$inferInsert, "empId"> | null;
+      documents?: Array<Omit<typeof document.$inferInsert, "empId">>;
+    },
     currentUser: typeof users.$inferSelect,
   ) {
     if (currentUser.roleId !== 0 && currentUser.roleId !== 1) {
@@ -30,17 +34,44 @@ class UserServices {
       throw new Error("Only employee users can be created, update type");
     }
 
+    const normalizedEmail = data.email.trim().toLowerCase();
+    const existingUser = await this.userRepo.getUserByEmail(normalizedEmail);
+    if (existingUser) {
+      throw new Error("An employee with this email already exists");
+    }
+
     await subscriptionService.assertCanAddEmployee(currentUser.id);
 
+    const {
+      employment: employmentData,
+      payroll: payrollData,
+      documents: documentData = [],
+      ...userInput
+    } = data;
+
+    if (!employmentData?.departmentId) {
+      throw new Error("Employment department is required");
+    }
+    if (
+      payrollData &&
+      (Number(payrollData.ctc) < 0 ||
+        Number(payrollData.monthlyGross) < 0 ||
+        Number(payrollData.monthlyPay) < 0 ||
+        Number(payrollData.baseSalary || 0) < 0)
+    ) {
+      throw new Error("Payroll amounts cannot be negative");
+    }
+
     // Generate random password if not provided
-    const plainPassword = (data.password && data.password.trim() !== "")
-      ? data.password
+    const plainPassword = (userInput.password && userInput.password.trim() !== "")
+      ? userInput.password
       : crypto.randomBytes(6).toString("hex");
 
     // Hash password
     const hashedPassword = await bcrypt.hash(plainPassword, 10);
     const userData = {
-      ...data,
+      ...userInput,
+      email: normalizedEmail,
       password: hashedPassword,
       createdBy: currentUser.id,
       organizationId: currentUser.organizationId,
@@ -48,20 +79,26 @@ class UserServices {
       isAdmin: false,
     };
 
-    const result = await this.userRepo.createUser(userData, currentUser);
+    const result = await this.userRepo.createUser(userData, currentUser, {
+      employment: employmentData,
+      payroll: payrollData,
+      documents: documentData,
+    });
 
     // Send email with credentials to employee asynchronously
-    emailService.sendEmployeeCredentialsEmail(data.email, data.name, plainPassword)
+    if (userInput.sendInvite !== false) {
+      emailService.sendEmployeeCredentialsEmail(userInput.email, userInput.name, plainPassword)
       .then((sent) => {
         if (sent) {
-          console.log(`Credentials email sent to employee: ${data.email}`);
+          console.log(`Credentials email sent to employee: ${userInput.email}`);
         } else {
-          console.error(`Failed to send credentials email to employee: ${data.email}`);
+          console.error(`Failed to send credentials email to employee: ${userInput.email}`);
         }
       })
       .catch((err) => {
-        console.error(`Error sending credentials email to employee: ${data.email}`, err);
+        console.error(`Error sending credentials email to employee: ${userInput.email}`, err);
       });
+    }
 
     return {
       message: "successfully created user",
@@ -101,17 +138,49 @@ class UserServices {
     };
   }
 
-  async getAllEmployeesByAdminId(adminId: number) {
-    const result = await this.userRepo.getAllEmployeesByAdminId(adminId);
-    const mapped = result.map((item) => ({
-      ...item,
+  async getAllEmployeesByAdminId(adminId: number, page?: number, limit?: number, search?: string) {
+    const { data, total } = await this.userRepo.getAllEmployeesByAdminId(adminId, page, limit, search);
+    const mapped = data.map((item) => ({
+      employee: item.employee,
       user: item.user
         ? {
             ...item.user,
             employeeId: `EMP${1000 + item.user.id}`,
           }
         : null,
+      employment: item.employment
+        ? {
+            ...item.employment,
+            department: item.department
+              ? {
+                  id: item.department.id,
+                  name: item.department.departmentName,
+                }
+              : null,
+            designation: item.designation
+              ? {
+                  id: item.designation.id,
+                  name: item.designation.name,
+                }
+              : null,
+          }
+        : null,
     }));
+
+    if (page !== undefined && limit !== undefined) {
+      return {
+        message: "successfully fetched employees by admin",
+        success: true,
+        data: {
+          employees: mapped,
+          total,
+          totalPages: Math.ceil(total / limit),
+          currentPage: page,
+          limit,
+        },
+      };
+    }
+
     return {
       message: "successfully fetched employees by admin",
       success: true,

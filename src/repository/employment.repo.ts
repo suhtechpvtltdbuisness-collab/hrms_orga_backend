@@ -77,7 +77,7 @@ class EmploymentRepository {
     const result = await this.db
       .update(employment)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(employment.employeeId, employeeResult[0].id))
+      .where(eq(employment.employeeId, employeeResult[0].userId))
       .returning();
     return result[0];
   }
@@ -106,7 +106,7 @@ class EmploymentRepository {
     const result = await this.db
       .update(employment)
       .set({ isDeleted: true, updatedAt: new Date() })
-      .where(eq(employment.employeeId, employeeResult[0].id))
+      .where(eq(employment.employeeId, employeeResult[0].userId))
       .returning();
     return result[0];
   }

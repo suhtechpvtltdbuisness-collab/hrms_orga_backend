@@ -38,6 +38,53 @@ uploadRouter.post(
   }
 );
 
+uploadRouter.post(
+  "/documents",
+  authenticate,
+  upload.array("documents", 20),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const files = req.files as Express.Multer.File[];
+      if (!files?.length) {
+        res.status(400).json({ success: false, message: "No files uploaded" });
+        return;
+      }
+
+      const allowedTypes = new Set([
+        "application/pdf",
+        "image/jpeg",
+        "image/png",
+      ]);
+      if (files.some((file) => !allowedTypes.has(file.mimetype))) {
+        res.status(400).json({
+          success: false,
+          message: "Documents must be PDF, JPG, or PNG files",
+        });
+        return;
+      }
+
+      const host = req.get("host") || "localhost:4000";
+      const uploadedFiles = await Promise.all(
+        files.map(async (file) => ({
+          name: file.originalname,
+          type: file.mimetype,
+          size: file.size,
+          url: await uploadImageToS3OrLocal(file, host),
+        })),
+      );
+
+      res.status(200).json({
+        success: true,
+        message: "Documents uploaded successfully",
+        files: uploadedFiles,
+      });
+    } catch (error) {
+      console.error("Document upload error:", error);
+      next(error);
+    }
+  },
+);
+
 uploadRouter.get(
   "/blob",
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {

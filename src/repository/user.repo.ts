@@ -1,5 +1,14 @@
 import { db } from "../db/connection.js";
-import { users, Employee, employment, Plain } from "../db/schema.js";
+import {
+  users,
+  Employee,
+  employment,
+  payroll,
+  document,
+  Plain,
+  department,
+  designation,
+} from "../db/schema.js";
 import { eq, ne, and, sql } from "drizzle-orm";
 
 class UserRepository {
@@ -10,6 +19,11 @@ class UserRepository {
   async createUser(
     data: typeof users.$inferInsert,
     user: typeof users.$inferSelect,
+    relatedData?: {
+      employment?: Omit<typeof employment.$inferInsert, "employeeId"> | null;
+      payroll?: Omit<typeof payroll.$inferInsert, "empId"> | null;
+      documents?: Array<Omit<typeof document.$inferInsert, "empId">>;
+    },
   ) {
     const result = await db.transaction(async (tx) => {
       const insertedUsers = await tx
@@ -24,12 +38,54 @@ class UserRepository {
         })
         .returning();
 
+      let employmentData = null;
+      if (relatedData?.employment) {
+        const insertedEmployment = await tx
+          .insert(employment)
+          .values({
+            ...relatedData.employment,
+            employeeId: insertedUsers[0].id,
+            createdBy: user.id,
+          })
+          .returning();
+        employmentData = insertedEmployment[0];
+      }
+
+      let payrollData = null;
+      if (relatedData?.payroll) {
+        const insertedPayroll = await tx
+          .insert(payroll)
+          .values({
+            ...relatedData.payroll,
+            empId: insertedUsers[0].id,
+            createdBy: user.id,
+          })
+          .returning();
+        payrollData = insertedPayroll[0];
+      }
+
+      let documentData: Array<typeof document.$inferSelect> = [];
+      if (relatedData?.documents?.length) {
+        documentData = await tx
+          .insert(document)
+          .values(
+            relatedData.documents.map((item) => ({
+              ...item,
+              empId: insertedUsers[0].id,
+            })),
+          )
+          .returning();
+      }
+
       // Remove password from response
       const { password: _, ...userWithoutPassword } = insertedUsers[0];
 
       return {
         user: userWithoutPassword,
         employee: employeeData[0],
+        employment: employmentData,
+        payroll: payrollData,
+        documents: documentData,
       };
     });
     return result;
@@ -53,6 +109,15 @@ class UserRepository {
     return result[0];
   }
 
+  async getUserByEmail(email: string) {
+    const result = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.email, email), eq(users.isDeleted, false)))
+      .limit(1);
+    return result[0];
+  }
+
   async getEmployeeById(id: number) {
     const result = await db
       .select()
@@ -70,16 +135,62 @@ class UserRepository {
     return result;
   }
 
-  async getAllEmployeesByAdminId(adminId: number) {
-    const result = await db
-      .select({
-        employee: Employee,
-        user: users,
-      })
-      .from(Employee)
-      .innerJoin(users, eq(Employee.userId, users.id))
-      .where(eq(Employee.adminId, adminId));
-    return result;
+  async getAllEmployeesByAdminId(adminId: number, page?: number, limit?: number, search?: string) {
+    let whereClause: any = eq(Employee.adminId, adminId);
+    if (search) {
+      whereClause = and(
+        whereClause,
+        sql`(${users.name} ILIKE ${'%' + search + '%'} OR ${users.email} ILIKE ${'%' + search + '%'})`
+      );
+    }
+
+    if (page !== undefined && limit !== undefined) {
+      const offset = (page - 1) * limit;
+
+      const [countResult] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(Employee)
+        .innerJoin(users, eq(Employee.userId, users.id))
+        .where(whereClause);
+
+      const total = countResult?.count ?? 0;
+
+      const data = await db
+        .select({
+          employee: Employee,
+          user: users,
+          employment: employment,
+          department: department,
+          designation: designation,
+        })
+        .from(Employee)
+        .innerJoin(users, eq(Employee.userId, users.id))
+        .leftJoin(employment, eq(employment.employeeId, Employee.userId))
+        .leftJoin(department, eq(department.id, employment.departmentId))
+        .leftJoin(designation, eq(designation.id, employment.designationId))
+        .where(whereClause)
+        .limit(limit)
+        .offset(offset);
+
+      return { data, total };
+    } else {
+      const data = await db
+        .select({
+          employee: Employee,
+          user: users,
+          employment: employment,
+          department: department,
+          designation: designation,
+        })
+        .from(Employee)
+        .innerJoin(users, eq(Employee.userId, users.id))
+        .leftJoin(employment, eq(employment.employeeId, Employee.userId))
+        .leftJoin(department, eq(department.id, employment.departmentId))
+        .leftJoin(designation, eq(designation.id, employment.designationId))
+        .where(whereClause);
+
+      return { data, total: data.length };
+    }
   }
 
   async getEmployeeDetailsByUserId(userId: number) {
@@ -91,7 +202,7 @@ class UserRepository {
       })
       .from(Employee)
       .innerJoin(users, eq(Employee.userId, users.id))
-      .leftJoin(employment, eq(employment.employeeId, Employee.id))
+      .leftJoin(employment, eq(employment.employeeId, Employee.userId))
       .where(eq(Employee.userId, userId))
       .limit(1);
     return result[0];
