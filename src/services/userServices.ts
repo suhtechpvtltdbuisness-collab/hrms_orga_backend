@@ -259,5 +259,34 @@ class UserServices {
       },
     };
   }
+
+  async softDeleteUser(
+    id: number,
+    currentUser: typeof users.$inferSelect,
+  ) {
+    if (currentUser.roleId !== 0 && currentUser.roleId !== 1) {
+      throw new Error("unauthorize, Only admins can delete users");
+    }
+
+    const existingUser = await this.userRepo.getUserById(id);
+    if (!existingUser) {
+      throw new Error("Employee not found");
+    }
+
+    if (
+      existingUser.isAdmin ||
+      existingUser.type === "admin" ||
+      existingUser.roleId === 1
+    ) {
+      throw new Error("Admin users cannot be deleted");
+    }
+
+    await this.userRepo.softDeleteUser(id);
+
+    return {
+      message: "Employee deleted successfully",
+      success: true,
+    };
+  }
 }
 export default UserServices;

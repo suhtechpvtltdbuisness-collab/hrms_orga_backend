@@ -90,5 +90,16 @@ class UserController {
       next(error);
     }
   }
+
+  async softDeleteUser(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = Number(req.params.id);
+      const currentUser = res.locals.user;
+      const result = await this.userServices.softDeleteUser(id, currentUser);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 export default UserController;

@@ -1,4 +1,7 @@
 import nodemailer from "nodemailer";
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
 
 interface MailOptions {
   to: string;
@@ -6,6 +9,30 @@ interface MailOptions {
   html: string;
   attachments?: any[];
 }
+
+const getLogoPath = (): string => {
+  if (process.env.LOGO_PATH) {
+    return process.env.LOGO_PATH;
+  }
+
+  const cwdPath = path.join(process.cwd(), "public", "image.png");
+  if (fs.existsSync(cwdPath)) {
+    return cwdPath;
+  }
+
+  try {
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const relativePath = path.join(__dirname, "..", "..", "public", "image.png");
+    if (fs.existsSync(relativePath)) {
+      return relativePath;
+    }
+  } catch (error) {
+    console.error("Error resolving logo path relative to file:", error);
+  }
+
+  return cwdPath;
+};
 
 const getTransporter = () => {
   const host = process.env.SMTP_HOST;
@@ -186,7 +213,7 @@ export const emailService = {
       attachments: [
         {
           filename: "logo.png",
-          path: "/home/aditya-pandey/Desktop/suhtech/ems/public/image.png",
+          path: getLogoPath(),
           cid: "orgalogo",
         },
       ],
@@ -368,7 +395,7 @@ export const emailService = {
       attachments: [
         {
           filename: "logo.png",
-          path: "/home/aditya-pandey/Desktop/suhtech/ems/public/image.png",
+          path: getLogoPath(),
           cid: "orgalogo",
         },
       ],
@@ -537,7 +564,7 @@ export const emailService = {
       attachments: [
         {
           filename: "logo.png",
-          path: "/home/aditya-pandey/Desktop/suhtech/ems/public/image.png",
+          path: getLogoPath(),
           cid: "orgalogo",
         },
       ],

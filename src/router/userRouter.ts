@@ -27,5 +27,8 @@ userRouter.get("/employee/:id", authenticate, (req, res, next) =>
 userRouter.put("/:id", authenticate, authorizeAdmin, (req, res, next) =>
   userController.updateUser(req, res, next),
 );
+userRouter.delete("/:id", authenticate, authorizeAdmin, (req, res, next) =>
+  userController.softDeleteUser(req, res, next),
+);
 
 export default userRouter;

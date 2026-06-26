@@ -104,7 +104,7 @@ class UserRepository {
     const result = await db
       .select()
       .from(users)
-      .where(eq(users.id, id))
+      .where(and(eq(users.id, id), eq(users.isDeleted, false)))
       .limit(1);
     return result[0];
   }
@@ -122,7 +122,8 @@ class UserRepository {
     const result = await db
       .select()
       .from(Employee)
-      .where(eq(Employee.id, id))
+      .innerJoin(users, eq(Employee.userId, users.id))
+      .where(and(eq(Employee.id, id), eq(users.isDeleted, false)))
       .limit(1);
     return result;
   }
@@ -136,7 +137,10 @@ class UserRepository {
   }
 
   async getAllEmployeesByAdminId(adminId: number, page?: number, limit?: number, search?: string) {
-    let whereClause: any = eq(Employee.adminId, adminId);
+    let whereClause: any = and(
+      eq(Employee.adminId, adminId),
+      eq(users.isDeleted, false),
+    );
     if (search) {
       whereClause = and(
         whereClause,
@@ -165,9 +169,12 @@ class UserRepository {
         })
         .from(Employee)
         .innerJoin(users, eq(Employee.userId, users.id))
-        .leftJoin(employment, eq(employment.employeeId, Employee.userId))
-        .leftJoin(department, eq(department.id, employment.departmentId))
-        .leftJoin(designation, eq(designation.id, employment.designationId))
+        .leftJoin(
+          employment,
+          and(eq(employment.employeeId, Employee.userId), eq(employment.isDeleted, false)),
+        )
+        .leftJoin(department, and(eq(department.id, employment.departmentId), eq(department.isDeleted, false)))
+        .leftJoin(designation, and(eq(designation.id, employment.designationId), eq(designation.isDeleted, false)))
         .where(whereClause)
         .limit(limit)
         .offset(offset);
@@ -184,9 +191,12 @@ class UserRepository {
         })
         .from(Employee)
         .innerJoin(users, eq(Employee.userId, users.id))
-        .leftJoin(employment, eq(employment.employeeId, Employee.userId))
-        .leftJoin(department, eq(department.id, employment.departmentId))
-        .leftJoin(designation, eq(designation.id, employment.designationId))
+        .leftJoin(
+          employment,
+          and(eq(employment.employeeId, Employee.userId), eq(employment.isDeleted, false)),
+        )
+        .leftJoin(department, and(eq(department.id, employment.departmentId), eq(department.isDeleted, false)))
+        .leftJoin(designation, and(eq(designation.id, employment.designationId), eq(designation.isDeleted, false)))
         .where(whereClause);
 
       return { data, total: data.length };
@@ -202,8 +212,11 @@ class UserRepository {
       })
       .from(Employee)
       .innerJoin(users, eq(Employee.userId, users.id))
-      .leftJoin(employment, eq(employment.employeeId, Employee.userId))
-      .where(eq(Employee.userId, userId))
+      .leftJoin(
+        employment,
+        and(eq(employment.employeeId, Employee.userId), eq(employment.isDeleted, false)),
+      )
+      .where(and(eq(Employee.userId, userId), eq(users.isDeleted, false)))
       .limit(1);
     return result[0];
   }
@@ -222,6 +235,42 @@ class UserRepository {
     // Remove password from response
     const { password: _, ...userWithoutPassword } = result[0];
     return userWithoutPassword;
+  }
+
+  async softDeleteUser(id: number) {
+    return await db.transaction(async (tx) => {
+      const [existingUser] = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(and(eq(users.id, id), eq(users.isDeleted, false)))
+        .limit(1);
+
+      if (!existingUser) {
+        throw new Error("Employee not found");
+      }
+
+      const [deletedUser] = await tx
+        .update(users)
+        .set({
+          isDeleted: true,
+          active: false,
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, id))
+        .returning();
+
+      await tx
+        .update(employment)
+        .set({ isDeleted: true, updatedAt: new Date() })
+        .where(and(eq(employment.employeeId, id), eq(employment.isDeleted, false)));
+
+      await tx
+        .update(payroll)
+        .set({ isDeleted: true, updatedAt: new Date() })
+        .where(and(eq(payroll.empId, id), eq(payroll.isDeleted, false)));
+
+      return deletedUser;
+    });
   }
 
   async getAllUsersForSuperAdmin(page: number, limit: number, search?: string) {
