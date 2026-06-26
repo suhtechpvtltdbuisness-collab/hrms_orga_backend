@@ -32,7 +32,9 @@ class LeaveRequestController {
       );
       res.status(200).json(result);
     } catch (error: any) {
-      res.status(500).json({ success: false, message: error.message });
+      res
+        .status(error.statusCode ?? 500)
+        .json({ success: false, message: error.message });
     }
   }
 

@@ -39,6 +39,26 @@ class LeaveRequestServices {
     }
   }
 
+  private normalizeStatus(status?: string) {
+    if (!status) {
+      return undefined;
+    }
+
+    if (status === "pending") {
+      return "submitted" as const;
+    }
+
+    if (["submitted", "approved", "rejected"].includes(status)) {
+      return status as "submitted" | "approved" | "rejected";
+    }
+
+    const error = new Error("Invalid leave request status filter") as Error & {
+      statusCode?: number;
+    };
+    error.statusCode = 400;
+    throw error;
+  }
+
   private async validateEmployee(empId: number) {
     const [employee] = await db
       .select()
@@ -115,7 +135,10 @@ class LeaveRequestServices {
     filters: { status?: string; empId?: number },
     currentUser: typeof users.$inferSelect,
   ) {
-    const queryFilters = { ...filters };
+    const queryFilters = {
+      ...filters,
+      status: this.normalizeStatus(filters.status),
+    };
 
     if (!currentUser.isAdmin && currentUser.type !== "admin") {
       queryFilters.empId = currentUser.id;
