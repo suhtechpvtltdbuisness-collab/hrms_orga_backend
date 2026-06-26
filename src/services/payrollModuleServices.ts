@@ -417,7 +417,7 @@ export class PayrollModuleServices {
       }),
     );
   }
-
+ 
   async updateAdditionalSalary(id: number, body: any, currentUser: CurrentUser) {
     assertAdmin(currentUser);
     const existing = await this.repo.getAdditionalSalaryById(id);
