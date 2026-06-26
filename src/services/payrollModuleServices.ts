@@ -406,12 +406,14 @@ export class PayrollModuleServices {
 
   async getAdditionalSalaries(query: any) {
     const empId = query.empId ? Number(query.empId) : undefined;
+    const periodStart = query.periodStart ? normalizeDate(query.periodStart, "periodStart") : undefined;
+    const periodEnd = query.periodEnd ? normalizeDate(query.periodEnd, "periodEnd") : undefined;
     return response(
       "Additional salaries fetched",
       await this.repo.getAdditionalSalaries({
         empId,
-        periodStart: query.periodStart,
-        periodEnd: query.periodEnd,
+        periodStart,
+        periodEnd,
       }),
     );
   }
@@ -562,12 +564,14 @@ export class PayrollModuleServices {
   }
 
   async getPayrollEntries(query: any) {
+    const periodStart = query.periodStart ? normalizeDate(query.periodStart, "periodStart") : undefined;
+    const periodEnd = query.periodEnd ? normalizeDate(query.periodEnd, "periodEnd") : undefined;
     return response(
       "Payroll entries fetched",
       await this.repo.getPayrollEntries({
         empId: query.empId ? Number(query.empId) : undefined,
-        periodStart: query.periodStart,
-        periodEnd: query.periodEnd,
+        periodStart,
+        periodEnd,
         status: query.status,
       }),
     );
@@ -698,9 +702,11 @@ export class PayrollModuleServices {
   }
 
   async getBankExport(query: any) {
+    const periodStart = query.periodStart ? normalizeDate(query.periodStart, "periodStart") : undefined;
+    const periodEnd = query.periodEnd ? normalizeDate(query.periodEnd, "periodEnd") : undefined;
     const rows = await this.repo.getFinalizedEntriesForBankExport({
-      periodStart: query.periodStart,
-      periodEnd: query.periodEnd,
+      periodStart,
+      periodEnd,
     });
     return response("Bank payout export data fetched", {
       rows: rows.map((row) => ({
