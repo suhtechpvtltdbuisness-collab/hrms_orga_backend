@@ -55,9 +55,11 @@ app.use(
     next: express.NextFunction,
   ) => {
     console.error("Error:", err);
-    res.status(err.status || 500).json({
+    res.status(err.statusCode || err.status || 500).json({
       success: false,
       message: err.message || "Internal server error",
+      code: err.code,
+      details: err.details,
     });
   },
 );

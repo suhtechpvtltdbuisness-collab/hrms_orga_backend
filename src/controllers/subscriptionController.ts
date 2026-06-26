@@ -1,6 +1,9 @@
 import { Request, Response } from "express";
 import { subscriptionService } from "../services/subscriptionServices.js";
-import { SubscriptionPlanType } from "../config/subscriptionPlans.js";
+import {
+  SubscriptionAddonType,
+  SubscriptionPlanType,
+} from "../config/subscriptionPlans.js";
 
 export const getPlans = async (_req: Request, res: Response): Promise<void> => {
   try {
@@ -196,6 +199,95 @@ export const verifyPayment = async (
       success: false,
       message:
         error instanceof Error ? error.message : "Payment verification failed",
+    });
+  }
+};
+
+export const createAddonOrder = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, message: "Not authenticated" });
+      return;
+    }
+
+    const { itemType, quantity } = req.body;
+
+    if (!itemType) {
+      res.status(400).json({ success: false, message: "itemType is required" });
+      return;
+    }
+
+    const order = await subscriptionService.createAddonOrder(
+      req.user.userId,
+      itemType as SubscriptionAddonType,
+      Number(quantity) || 1,
+    );
+
+    res.status(200).json({ success: true, data: order });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message:
+        error instanceof Error ? error.message : "Failed to create add-on order",
+    });
+  }
+};
+
+export const verifyAddonPayment = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, message: "Not authenticated" });
+      return;
+    }
+
+    const {
+      itemType,
+      quantity,
+      razorpayOrderId,
+      razorpayPaymentId,
+      razorpaySignature,
+    } = req.body;
+
+    if (
+      !itemType ||
+      !razorpayOrderId ||
+      !razorpayPaymentId ||
+      !razorpaySignature
+    ) {
+      res.status(400).json({
+        success: false,
+        message: "itemType and Razorpay payment details are required",
+      });
+      return;
+    }
+
+    const result = await subscriptionService.verifyAddonPayment(
+      req.user.userId,
+      itemType as SubscriptionAddonType,
+      razorpayOrderId,
+      razorpayPaymentId,
+      razorpaySignature,
+      Number(quantity) || 1,
+    );
+
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result,
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Add-on payment verification failed",
     });
   }
 };

@@ -1,4 +1,10 @@
-export type SubscriptionPlanType = "free_trial" | "starter_pack" | "premium";
+export type SubscriptionPlanType =
+  | "free_trial"
+  | "starter_pack"
+  | "premium"
+  | "enterprise";
+
+export type SubscriptionAddonType = "extra_employee" | "custom_feature";
 
 export interface SubscriptionPlanConfig {
   planType: SubscriptionPlanType;
@@ -10,6 +16,13 @@ export interface SubscriptionPlanConfig {
   maxEmployees: number;
   module: "hrms";
   organizationType: "startup" | "sme" | "enterprise";
+}
+
+export interface SubscriptionAddonConfig {
+  itemType: SubscriptionAddonType;
+  name: string;
+  description: string;
+  priceInr: number;
 }
 
 export const SUBSCRIPTION_PLANS: Record<
@@ -29,33 +42,72 @@ export const SUBSCRIPTION_PLANS: Record<
   },
   starter_pack: {
     planType: "starter_pack",
-    name: "Growth",
+    name: "Starter",
     description:
-      "₹2,999/month flat — up to 20 employees (~₹150/employee at full capacity)",
-    priceInr: 2999,
-    pricePerEmployeeInr: 150,
+      "₹299/month flat — up to 6 employees for small teams getting started",
+    priceInr: 299,
+    pricePerEmployeeInr: 51,
     durationDays: 30,
-    maxEmployees: 20,
+    maxEmployees: 6,
     module: "hrms",
     organizationType: "sme",
   },
   premium: {
     planType: "premium",
-    name: "Business",
+    name: "Growth",
     description:
-      "₹4,999/month flat — up to 20 employees with full ORGA HRMS suite",
-    priceInr: 4999,
-    pricePerEmployeeInr: 250,
+      "₹499/month flat — up to 16 employees with the full HRMS workflow",
+    priceInr: 499,
+    pricePerEmployeeInr: 51,
     durationDays: 30,
-    maxEmployees: 20,
+    maxEmployees: 16,
     module: "hrms",
     organizationType: "enterprise",
+  },
+  enterprise: {
+    planType: "enterprise",
+    name: "Enterprise",
+    description:
+      "₹799/month flat — up to 26 employees for larger HRMS teams",
+    priceInr: 799,
+    pricePerEmployeeInr: 51,
+    durationDays: 30,
+    maxEmployees: 26,
+    module: "hrms",
+    organizationType: "enterprise",
+  },
+};
+
+export const SUBSCRIPTION_ADDONS: Record<
+  SubscriptionAddonType,
+  SubscriptionAddonConfig
+> = {
+  extra_employee: {
+    itemType: "extra_employee",
+    name: "Extra Employee Seat",
+    description: "Add one extra employee seat beyond your current plan limit",
+    priceInr: 51,
+  },
+  custom_feature: {
+    itemType: "custom_feature",
+    name: "Custom Feature",
+    description: "Request a custom feature or instance enhancement for your setup",
+    priceInr: 2500,
   },
 };
 
 export const getPlanConfig = (planType: string): SubscriptionPlanConfig | null => {
   if (planType in SUBSCRIPTION_PLANS) {
     return SUBSCRIPTION_PLANS[planType as SubscriptionPlanType];
+  }
+  return null;
+};
+
+export const getAddonConfig = (
+  itemType: string,
+): SubscriptionAddonConfig | null => {
+  if (itemType in SUBSCRIPTION_ADDONS) {
+    return SUBSCRIPTION_ADDONS[itemType as SubscriptionAddonType];
   }
   return null;
 };

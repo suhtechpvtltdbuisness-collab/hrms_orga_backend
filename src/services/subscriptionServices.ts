@@ -1,6 +1,9 @@
 import {
   SUBSCRIPTION_PLANS,
+  SUBSCRIPTION_ADDONS,
+  getAddonConfig,
   getPlanConfig,
+  SubscriptionAddonType,
   SubscriptionPlanType,
 } from "../config/subscriptionPlans.js";
 import { SubscriptionRepository } from "../repository/subscription.repo.js";
@@ -26,15 +29,32 @@ export class SubscriptionService {
     return new Date(plan.expired) > new Date();
   }
 
+  private getBasePlanMaxEmployees(plan: typeof Plain.$inferSelect | null) {
+    if (!plan) {
+      return 0;
+    }
+
+    const config = getPlanConfig(plan.planType);
+    return config?.maxEmployees ?? plan.maxEmployees ?? 0;
+  }
+
   async enrichPlan(userId: number, plan: typeof Plain.$inferSelect | null) {
     const employeeCount = await this.repo.countEmployeesByAdminId(userId);
     const active = this.isPlanActive(plan);
     const maxEmployees = plan?.maxEmployees ?? 0;
+    const includedEmployees = this.getBasePlanMaxEmployees(plan);
+    const extraEmployeesPurchased = Math.max(maxEmployees - includedEmployees, 0);
 
     return {
       ...plan,
       employeeCount,
+      includedEmployees,
+      extraEmployeesPurchased,
+      extraEmployeePriceInr: SUBSCRIPTION_ADDONS.extra_employee.priceInr,
       maxEmployees,
+      seatsRemaining: Math.max(maxEmployees - employeeCount, 0),
+      hasActivePlan: active,
+      canPurchaseExtraEmployees: active,
       canAddEmployee: active && employeeCount < maxEmployees,
       isExpired: plan ? !active : true,
     };
@@ -50,6 +70,8 @@ export class SubscriptionService {
       durationDays: plan.durationDays,
       maxEmployees: plan.maxEmployees,
       module: plan.module,
+      extraEmployeePriceInr: SUBSCRIPTION_ADDONS.extra_employee.priceInr,
+      customFeaturePriceInr: SUBSCRIPTION_ADDONS.custom_feature.priceInr,
       billingModel:
         plan.priceInr > 0
           ? `flat_${plan.priceInr}_inr_up_to_${plan.maxEmployees}_employees`
@@ -118,17 +140,32 @@ export class SubscriptionService {
     const plan = await this.repo.getActivePlanByUserId(adminId);
 
     if (!this.isPlanActive(plan)) {
-      throw new Error(
+      const error = new Error(
         "Your subscription is inactive or expired. Please upgrade your plan.",
-      );
+      ) as Error & { statusCode?: number; code?: string };
+      error.statusCode = 403;
+      error.code = "SUBSCRIPTION_INACTIVE";
+      throw error;
     }
 
     const employeeCount = await this.repo.countEmployeesByAdminId(adminId);
 
     if (employeeCount >= (plan?.maxEmployees ?? 0)) {
-      throw new Error(
-        `Employee limit reached (${plan?.maxEmployees}). Upgrade your plan to add more employees.`,
-      );
+      const error = new Error(
+        `You have reached your plan limit. You can only have ${plan?.maxEmployees} users. If you want to add more users you have to pay ₹${SUBSCRIPTION_ADDONS.extra_employee.priceInr} per person.`,
+      ) as Error & {
+        statusCode?: number;
+        code?: string;
+        details?: Record<string, number>;
+      };
+      error.statusCode = 409;
+      error.code = "EMPLOYEE_LIMIT_REACHED";
+      error.details = {
+        employeeCount,
+        maxEmployees: plan?.maxEmployees ?? 0,
+        extraEmployeePriceInr: SUBSCRIPTION_ADDONS.extra_employee.priceInr,
+      };
+      throw error;
     }
   }
 
@@ -394,6 +431,52 @@ export class SubscriptionService {
     };
   }
 
+  async createAddonOrder(
+    userId: number,
+    itemType: SubscriptionAddonType,
+    quantity: number = 1,
+  ) {
+    const config = getAddonConfig(itemType);
+
+    if (!config) {
+      throw new Error("Invalid add-on type");
+    }
+
+    const activePlan = await this.repo.getActivePlanByUserId(userId);
+    if (!this.isPlanActive(activePlan)) {
+      throw new Error(
+        "Please activate a base subscription before purchasing add-ons.",
+      );
+    }
+
+    const normalizedQuantity =
+      itemType === "extra_employee" ? Math.max(1, Math.floor(quantity || 1)) : 1;
+    const amountInPaise = config.priceInr * normalizedQuantity * 100;
+    const razorpay = getRazorpayInstance();
+
+    const order = await razorpay.orders.create({
+      amount: amountInPaise,
+      currency: "INR",
+      receipt: `addon_${itemType}_${userId}_${Date.now()}`,
+      notes: {
+        userId: String(userId),
+        itemType,
+        quantity: String(normalizedQuantity),
+      },
+    });
+
+    return {
+      keyId: getRazorpayKeyId(),
+      orderId: order.id,
+      amount: amountInPaise,
+      currency: "INR",
+      itemType,
+      quantity: normalizedQuantity,
+      planName: config.name,
+      unitPriceInr: config.priceInr,
+    };
+  }
+
   async verifyAndActivatePlan(
     userId: number,
     planType: SubscriptionPlanType,
@@ -462,6 +545,69 @@ export class SubscriptionService {
     return { isSubscribed: true, plan: enrichedPlan };
   }
 
+  async verifyAddonPayment(
+    userId: number,
+    itemType: SubscriptionAddonType,
+    razorpayOrderId: string,
+    razorpayPaymentId: string,
+    razorpaySignature: string,
+    quantity: number = 1,
+  ) {
+    const config = getAddonConfig(itemType);
+
+    if (!config) {
+      throw new Error("Invalid add-on type");
+    }
+
+    const isValid = verifyRazorpayPaymentSignature(
+      razorpayOrderId,
+      razorpayPaymentId,
+      razorpaySignature,
+    );
+
+    if (!isValid) {
+      throw new Error("Payment verification failed");
+    }
+
+    const activePlan = await this.repo.getActivePlanByUserId(userId);
+    if (!activePlan || !this.isPlanActive(activePlan)) {
+      throw new Error(
+        "Please activate a base subscription before purchasing add-ons.",
+      );
+    }
+
+    const normalizedQuantity =
+      itemType === "extra_employee" ? Math.max(1, Math.floor(quantity || 1)) : 1;
+
+    let updatedPlan = activePlan;
+    if (itemType === "extra_employee") {
+      updatedPlan = await this.repo.updatePlan(activePlan.id, {
+        maxEmployees: (activePlan.maxEmployees ?? 0) + normalizedQuantity,
+      });
+    }
+
+    await this.repo.createPayment({
+      plainId: updatedPlan.id,
+      status: "paid",
+      transactionId: `${itemType}:${razorpayOrderId}`,
+      paymentMode: "online",
+      totalAmount: String(config.priceInr * normalizedQuantity),
+      paymentId: razorpayPaymentId,
+    });
+
+    const plan = await this.enrichPlan(userId, updatedPlan);
+
+    return {
+      itemType,
+      quantity: normalizedQuantity,
+      plan,
+      message:
+        itemType === "extra_employee"
+          ? `${normalizedQuantity} extra employee seat${normalizedQuantity > 1 ? "s were" : " was"} added successfully.`
+          : "Custom feature payment recorded successfully.",
+    };
+  }
+
   async getAllSubscriptions(page: number = 1, limit: number = 10, search?: string) {
     const { data: rawPlans, total } = await this.repo.getAllSubscriptionsWithUsers(page, limit, search);
     
@@ -490,9 +636,9 @@ export class SubscriptionService {
       // Format plan name
       let planName = "Free Trial";
       if (plan.planType === "starter_pack") {
-        planName = "Growth";
+        planName = "Starter";
       } else if (plan.planType === "premium") {
-        planName = "Business";
+        planName = "Growth";
       } else if (plan.planType === "enterprise") {
         planName = "Enterprise";
       }

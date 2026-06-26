@@ -30,9 +30,9 @@ class OrganizationServices {
       if (plan?.planType === "free_trial") {
         planName = "Free Trial";
       } else if (plan?.planType === "starter_pack") {
-        planName = "Growth";
+        planName = "Starter";
       } else if (plan?.planType === "premium") {
-        planName = "Business";
+        planName = "Growth";
       } else if (plan?.planType === "enterprise") {
         planName = "Enterprise";
       } else if (plan?.planType === "basic") {
@@ -79,8 +79,8 @@ class OrganizationServices {
     const getPlanName = (planType?: string | null) => {
       if (!planType) return "No Plan";
       if (planType === "free_trial") return "Free Trial";
-      if (planType === "starter_pack") return "Growth";
-      if (planType === "premium") return "Business";
+      if (planType === "starter_pack") return "Starter";
+      if (planType === "premium") return "Growth";
       if (planType === "enterprise") return "Enterprise";
       return planType.charAt(0).toUpperCase() + planType.slice(1);
     };
@@ -202,4 +202,3 @@ class OrganizationServices {
 }
 
 export default OrganizationServices;
-

@@ -6,6 +6,8 @@ import {
   verifyTrialSubscription,
   createPaymentOrder,
   verifyPayment,
+  createAddonOrder,
+  verifyAddonPayment,
   getAllSubscriptions,
 } from "../controllers/subscriptionController.js";
 import { authenticate, authorizeSuperAdmin } from "../middleware/auth.js";
@@ -20,5 +22,7 @@ subscriptionRouter.post("/free-trial", authenticate, createTrialSubscription);
 subscriptionRouter.post("/verify-trial", authenticate, verifyTrialSubscription);
 subscriptionRouter.post("/create-order", authenticate, createPaymentOrder);
 subscriptionRouter.post("/verify-payment", authenticate, verifyPayment);
+subscriptionRouter.post("/create-addon-order", authenticate, createAddonOrder);
+subscriptionRouter.post("/verify-addon-payment", authenticate, verifyAddonPayment);
 
 export default subscriptionRouter;
