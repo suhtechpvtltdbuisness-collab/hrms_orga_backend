@@ -726,13 +726,21 @@ export const jobs = pgTable("jobs", {
   adminId: integer("admin_id")
     .notNull()
     .references(() => users.id),
-  employeeType: employeeTypeEnum("employee_type").notNull(),
+  employeeType: varchar("employee_type", { length: 50 }).notNull(),
   description: text("description"),
   requiredSkills: text("required_skills"),
   location: varchar("location", { length: 255 }),
   salaryRange: varchar("salary_range", { length: 100 }),
   departmentId: integer("department_id").references(() => department.id),
   designationId: integer("designation_id").references(() => designation.id),
+  numberOfOpenings: integer("number_of_openings").default(1),
+  experience: varchar("experience", { length: 50 }),
+  jobSummary: text("job_summary"),
+  keyResponsibilities: text("key_responsibilities"),
+  applicationDeadline: timestamp("application_deadline"),
+  applicationSource: varchar("application_source", { length: 100 }).default("Company Website"),
+  jobVisibility: varchar("job_visibility", { length: 50 }).default("Public"),
+  jdFileUrl: text("jd_file_url"),
   isActive: boolean("is_active").default(true).notNull(),
   isDeleted: boolean("is_deleted").default(false).notNull(),
   createdBy: integer("created_by"),
@@ -747,7 +755,10 @@ export const jobApplication = pgTable("job_application", {
     .notNull()
     .references(() => jobs.id),
   applicantName: varchar("applicant_name", { length: 255 }).notNull(),
-  applicantEmail: varchar("applicant_email", { length: 255 }).notNull(),
+  applicantEmail: varchar("applicant_email", { length: 255 }),
+  applicantPhone: varchar("applicant_phone", { length: 50 }),
+  applicantExperience: varchar("applicant_experience", { length: 100 }),
+  applicantSkills: text("applicant_skills"),
   resume: text("resume"),
   coverLetter: text("cover_letter"),
   status: varchar("status", { length: 50 }).default("pending").notNull(),
@@ -767,6 +778,23 @@ export const interview = pgTable("interview", {
   meetingLink: varchar("meeting_link", { length: 255 }),
   status: varchar("status", { length: 50 }).default("scheduled").notNull(),
   feedback: text("feedback"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const referrals = pgTable("referrals", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id")
+    .notNull()
+    .references(() => users.id),
+  referralCode: varchar("referral_code", { length: 50 }).notNull().unique(),
+  jobId: integer("job_id").references(() => jobs.id),
+  candidateName: varchar("candidate_name", { length: 255 }),
+  candidateEmail: varchar("candidate_email", { length: 255 }),
+  candidatePhone: varchar("candidate_phone", { length: 50 }),
+  resumeUrl: text("resume_url"),
+  status: varchar("status", { length: 50 }).default("pending").notNull(),
+  notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

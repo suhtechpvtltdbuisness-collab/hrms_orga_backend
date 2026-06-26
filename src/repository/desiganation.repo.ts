@@ -206,21 +206,24 @@ class DesignationRepository {
     return result[0]?.count ?? 0;
   }
 
-  async getDesignationsDropdown(organizationId: number) {
+  async getDesignationsDropdown(organizationId: number, departmentId?: number) {
+    let whereClause = and(
+      eq(department.organizationId, organizationId),
+      eq(designation.status, true),
+      eq(designation.isDeleted, false)
+    );
+    if (departmentId !== undefined) {
+      whereClause = and(whereClause, eq(designation.departmentId, departmentId));
+    }
     const result = await this.db
       .select({
         id: designation.id,
         name: designation.name,
+        departmentId: designation.departmentId,
       })
       .from(designation)
       .innerJoin(department, eq(designation.departmentId, department.id))
-      .where(
-        and(
-          eq(department.organizationId, organizationId),
-          eq(designation.status, true),
-          eq(designation.isDeleted, false)
-        )
-      );
+      .where(whereClause);
     return result;
   }
 

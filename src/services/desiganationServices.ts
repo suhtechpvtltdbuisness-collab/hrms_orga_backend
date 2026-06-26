@@ -150,12 +150,12 @@ class DesignationServices {
     };
   }
 
-  async getDesignationsDropdown(currentUser: typeof users.$inferSelect) {
+  async getDesignationsDropdown(currentUser: typeof users.$inferSelect, departmentId?: number) {
     const orgId = currentUser.organizationId;
     if (!orgId) {
       throw new Error("User does not belong to any organization");
     }
-    const result = await this.designationRepo.getDesignationsDropdown(orgId);
+    const result = await this.designationRepo.getDesignationsDropdown(orgId, departmentId);
     return {
       message: "successfully fetched designations dropdown",
       success: true,

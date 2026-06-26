@@ -76,7 +76,8 @@ class DesignationController {
   async getDesignationsDropdown(req: Request, res: Response, next: NextFunction) {
     try {
       const user = res.locals.user;
-      const result = await this.designationServices.getDesignationsDropdown(user);
+      const departmentId = req.query.departmentId ? Number(req.query.departmentId) : undefined;
+      const result = await this.designationServices.getDesignationsDropdown(user, departmentId);
       res.status(200).json(result);
     } catch (error: any) {
       res.status(500).json({
