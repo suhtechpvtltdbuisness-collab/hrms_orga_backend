@@ -105,7 +105,7 @@ class HiringRepository {
   }
 
   async getAllInterviews(adminId?: number) {
-    let query = db
+    const query = db
       .select({
         id: interview.id,
         jobApplicationId: interview.jobApplicationId,
@@ -126,10 +126,10 @@ class HiringRepository {
       .leftJoin(jobs, eq(jobApplication.jobId, jobs.id));
 
     if (adminId) {
-      query = query.where(eq(jobs.adminId, adminId));
+      return query.where(eq(jobs.adminId, adminId)).orderBy(desc(interview.scheduledAt));
     }
 
-    return await query.orderBy(desc(interview.scheduledAt));
+    return query.orderBy(desc(interview.scheduledAt));
   }
 
   async getInterviewById(id: number) {
@@ -206,7 +206,7 @@ class HiringRepository {
       .leftJoin(jobs, eq(referrals.jobId, jobs.id));
 
     if (whereClause) {
-      query.where(whereClause);
+      return await query.where(whereClause).orderBy(desc(referrals.createdAt));
     }
 
     return await query.orderBy(desc(referrals.createdAt));
