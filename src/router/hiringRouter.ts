@@ -105,6 +105,18 @@ hiringRouter.put("/referrals/:id", authenticate, (req, res, next) =>
   hiringController.updateReferral(req, res, next),
 );
 
+hiringRouter.patch("/applications/:id/notes", authenticate, (req, res, next) =>
+  hiringController.updateApplicationNotes(req, res, next),
+);
+
+hiringRouter.patch("/applications/:id/ats-score", authenticate, (req, res, next) =>
+  hiringController.updateApplicationAtsScore(req, res, next),
+);
+
+hiringRouter.post("/applications/:id/ats-analyze", authenticate, (req, res, next) =>
+  hiringController.analyzeApplication(req, res, next),
+);
+
 // ─── Dashboard Stats ─────────────────────────────────────────────
 hiringRouter.get("/dashboard/stats", authenticate, (req, res, next) =>
   hiringController.getDashboardStats(req, res, next),

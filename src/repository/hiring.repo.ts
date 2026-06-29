@@ -75,8 +75,26 @@ class HiringRepository {
 
   async getApplicationById(id: number) {
     const result = await db
-      .select()
+      .select({
+        id: jobApplication.id,
+        jobId: jobApplication.jobId,
+        applicantName: jobApplication.applicantName,
+        applicantEmail: jobApplication.applicantEmail,
+        applicantPhone: jobApplication.applicantPhone,
+        applicantExperience: jobApplication.applicantExperience,
+        applicantSkills: jobApplication.applicantSkills,
+        resume: jobApplication.resume,
+        coverLetter: jobApplication.coverLetter,
+        status: jobApplication.status,
+        hrNotes: jobApplication.hrNotes,
+        atsData: jobApplication.atsData,
+        createdAt: jobApplication.createdAt,
+        updatedAt: jobApplication.updatedAt,
+        jobTitle: jobs.title,
+        jobLocation: jobs.location,
+      })
       .from(jobApplication)
+      .leftJoin(jobs, eq(jobApplication.jobId, jobs.id))
       .where(eq(jobApplication.id, id))
       .limit(1);
     return result[0];
@@ -252,6 +270,24 @@ class HiringRepository {
       .update(referrals)
       .set({ ...referralData, updatedAt: new Date() })
       .where(eq(referrals.id, id))
+      .returning();
+    return result[0];
+  }
+
+  async updateApplicationNotes(id: number, hrNotes: string) {
+    const result = await db
+      .update(jobApplication)
+      .set({ hrNotes, updatedAt: new Date() })
+      .where(eq(jobApplication.id, id))
+      .returning();
+    return result[0];
+  }
+
+  async updateApplicationAtsScore(id: number, atsData: any) {
+    const result = await db
+      .update(jobApplication)
+      .set({ atsData, updatedAt: new Date() })
+      .where(eq(jobApplication.id, id))
       .returning();
     return result[0];
   }

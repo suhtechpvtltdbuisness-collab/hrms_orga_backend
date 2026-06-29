@@ -762,6 +762,8 @@ export const jobApplication = pgTable("job_application", {
   resume: text("resume"),
   coverLetter: text("cover_letter"),
   status: varchar("status", { length: 50 }).default("pending").notNull(),
+  hrNotes: text("hr_notes"),
+  atsData: jsonb("ats_data"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

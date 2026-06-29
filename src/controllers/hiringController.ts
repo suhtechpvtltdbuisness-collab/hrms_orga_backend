@@ -172,6 +172,50 @@ class HiringController {
     }
   }
 
+  async updateApplicationNotes(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = Number(req.params.id);
+      if (isNaN(id)) {
+        res.status(400).json({ success: false, message: "Invalid application ID" });
+        return;
+      }
+      const { hrNotes } = req.body;
+      const result = await this.hiringServices.updateApplicationNotes(id, hrNotes);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message || "Failed to update notes" });
+    }
+  }
+
+  async updateApplicationAtsScore(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = Number(req.params.id);
+      if (isNaN(id)) {
+        res.status(400).json({ success: false, message: "Invalid application ID" });
+        return;
+      }
+      const { atsData } = req.body;
+      const result = await this.hiringServices.updateApplicationAtsScore(id, atsData);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message || "Failed to update ATS score" });
+    }
+  }
+
+  async analyzeApplication(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = Number(req.params.id);
+      if (isNaN(id)) {
+        res.status(400).json({ success: false, message: "Invalid application ID" });
+        return;
+      }
+      const result = await this.hiringServices.analyzeApplication(id);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message || "Failed to analyze application" });
+    }
+  }
+
   // ─── Interviews ────────────────────────────────────────────────
   async createInterview(req: Request, res: Response, next: NextFunction) {
     try {

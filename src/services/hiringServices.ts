@@ -91,6 +91,58 @@ class HiringServices {
     return { message: "Application details fetched successfully", success: true, data: result };
   }
 
+  async updateApplicationNotes(id: number, hrNotes: string) {
+    const existing = await this.hiringRepo.getApplicationById(id);
+    if (!existing) throw new Error("Application not found");
+    const result = await this.hiringRepo.updateApplicationNotes(id, hrNotes);
+    return { message: "HR notes updated successfully", success: true, data: result };
+  }
+
+  async updateApplicationAtsScore(id: number, atsData: any) {
+    const existing = await this.hiringRepo.getApplicationById(id);
+    if (!existing) throw new Error("Application not found");
+    const result = await this.hiringRepo.updateApplicationAtsScore(id, atsData);
+    return { message: "ATS score updated successfully", success: true, data: result };
+  }
+
+  async analyzeApplication(id: number) {
+    const application = await this.hiringRepo.getApplicationById(id);
+    if (!application) throw new Error("Application not found");
+
+    const job = await this.hiringRepo.getJobById(application.jobId);
+    if (!job) throw new Error("Associated job not found");
+
+    const applicantSkills = (application.applicantSkills || "").split(/[,;]\s*/).map((s: string) => s.toLowerCase().trim()).filter(Boolean);
+    const requiredSkills = (job.requiredSkills || "").split(/[,;]\s*/).map((s: string) => s.toLowerCase().trim()).filter(Boolean);
+
+    let skillMatch = 50;
+    if (requiredSkills.length > 0 && applicantSkills.length > 0) {
+      const matched = applicantSkills.filter((s: string) => requiredSkills.some((rs: string) => rs.includes(s) || s.includes(rs)));
+      skillMatch = Math.round((matched.length / requiredSkills.length) * 100);
+    }
+
+    const applicantExp = parseInt(application.applicantExperience || "0") || 0;
+    const jobExp = parseInt(job.experience || "0") || 0;
+    const experienceFit = jobExp > 0 ? Math.min(Math.round((applicantExp / jobExp) * 100), 100) : 70;
+
+    const educationFit = 85;
+    const roleMatch = Math.round((skillMatch + experienceFit) / 2);
+
+    const atsData = { skillMatch, experienceFit, educationFit, roleMatch };
+    const avgScore = Math.round((skillMatch + experienceFit + educationFit + roleMatch) / 4);
+    let atsVerdict = "Strong fit";
+    if (avgScore < 60) atsVerdict = "Weak fit";
+    else if (avgScore < 75) atsVerdict = "Moderate fit";
+
+    await this.hiringRepo.updateApplicationAtsScore(id, { ...atsData, atsVerdict });
+
+    return {
+      message: "ATS analysis complete",
+      success: true,
+      data: { ...atsData, atsVerdict, applicantName: application.applicantName, applicantEmail: application.applicantEmail },
+    };
+  }
+
   async updateApplicationStatus(id: number, status: string) {
     const existing = await this.hiringRepo.getApplicationById(id);
     if (!existing) throw new Error("Application not found");
