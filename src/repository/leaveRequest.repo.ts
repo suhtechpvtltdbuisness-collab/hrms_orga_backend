@@ -1,10 +1,11 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "../db/connection.js";
-import { leaveRequest, users } from "../db/schema.js";
+import { Employee, leaveRequest, users } from "../db/schema.js";
 
 export type LeaveRequestFilters = {
   status?: string;
   empId?: number;
+  adminId?: number;
 };
 
 class LeaveRequestRepository {
@@ -47,20 +48,32 @@ class LeaveRequestRepository {
       conditions.push(eq(leaveRequest.empId, filters.empId));
     }
 
+    if (filters.adminId) {
+      conditions.push(eq(Employee.adminId, filters.adminId));
+    }
+
     return db
       .select(this.selectFields)
       .from(leaveRequest)
       .leftJoin(users, eq(leaveRequest.empId, users.id))
+      .leftJoin(Employee, eq(Employee.userId, leaveRequest.empId))
       .where(and(...conditions))
       .orderBy(desc(leaveRequest.createdAt));
   }
 
-  async getLeaveRequestById(id: number) {
+  async getLeaveRequestById(id: number, adminId?: number) {
     const [result] = await db
       .select(this.selectFields)
       .from(leaveRequest)
       .leftJoin(users, eq(leaveRequest.empId, users.id))
-      .where(and(eq(leaveRequest.id, id), eq(leaveRequest.isDeleted, false)))
+      .leftJoin(Employee, eq(Employee.userId, leaveRequest.empId))
+      .where(
+        and(
+          eq(leaveRequest.id, id),
+          eq(leaveRequest.isDeleted, false),
+          ...(adminId ? [eq(Employee.adminId, adminId)] : []),
+        ),
+      )
       .limit(1);
 
     return result ?? null;

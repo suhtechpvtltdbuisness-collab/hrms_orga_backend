@@ -14,7 +14,7 @@ import {
   unique,
   jsonb,
 } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import { number } from "zod";
 
 // Enums
@@ -452,6 +452,218 @@ export const leaveRequest = pgTable("leave_request", {
   reviewedAt: timestamp("reviewed_at"),
   rejectionReason: text("rejection_reason"),
   isDeleted: boolean("is_deleted").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const leaveHoliday = pgTable(
+  "leave_holiday",
+  {
+    id: serial("id").primaryKey(),
+    adminId: integer("admin_id")
+      .notNull()
+      .references(() => users.id),
+    organizationId: integer("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    holidayListName: varchar("holiday_list_name", { length: 120 }).notNull(),
+    holidayYear: integer("holiday_year").notNull(),
+    name: varchar("name", { length: 120 }).notNull(),
+    holidayDate: date("holiday_date").notNull(),
+    holidayType: varchar("holiday_type", { length: 40 }).notNull(),
+    description: text("description"),
+    createdBy: integer("created_by").references(() => users.id),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    uniqueHoliday: unique("leave_holiday_admin_date_name_unique").on(
+      table.adminId,
+      table.holidayDate,
+      table.name,
+    ),
+  }),
+);
+
+export const leavePeriod = pgTable(
+  "leave_period",
+  {
+    id: serial("id").primaryKey(),
+    adminId: integer("admin_id")
+      .notNull()
+      .references(() => users.id),
+    organizationId: integer("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    name: varchar("name", { length: 100 }).notNull(),
+    fromDate: date("from_date").notNull(),
+    toDate: date("to_date").notNull(),
+    holidayListName: varchar("holiday_list_name", { length: 120 }),
+    holidayYear: integer("holiday_year"),
+    isActive: boolean("is_active").default(true).notNull(),
+    createdBy: integer("created_by").references(() => users.id),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    uniquePeriodName: unique("leave_period_admin_name_unique").on(
+      table.adminId,
+      table.name,
+    ),
+  }),
+);
+
+export const leaveBlock = pgTable("leave_block", {
+  id: serial("id").primaryKey(),
+  adminId: integer("admin_id")
+    .notNull()
+    .references(() => users.id),
+  organizationId: integer("organization_id")
+    .notNull()
+    .references(() => organizations.id),
+  name: varchar("name", { length: 120 }).notNull(),
+  fromDate: date("from_date").notNull(),
+  toDate: date("to_date").notNull(),
+  departmentIds: jsonb("department_ids")
+    .$type<number[]>()
+    .default(sql`'[]'::jsonb`)
+    .notNull(),
+  reason: text("reason"),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const leaveTypeConfig = pgTable(
+  "leave_type_config",
+  {
+    id: serial("id").primaryKey(),
+    adminId: integer("admin_id")
+      .notNull()
+      .references(() => users.id),
+    organizationId: integer("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    name: varchar("name", { length: 120 }).notNull(),
+    code: varchar("code", { length: 50 }).notNull(),
+    maxDays: integer("max_days").default(0).notNull(),
+    carryForward: boolean("carry_forward").default(false).notNull(),
+    encashable: boolean("encashable").default(false).notNull(),
+    isPaid: boolean("is_paid").default(true).notNull(),
+    allowHalfDay: boolean("allow_half_day").default(true).notNull(),
+    description: text("description"),
+    isSystem: boolean("is_system").default(false).notNull(),
+    isActive: boolean("is_active").default(true).notNull(),
+    createdBy: integer("created_by").references(() => users.id),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    uniqueLeaveTypeName: unique("leave_type_config_admin_name_unique").on(
+      table.adminId,
+      table.name,
+    ),
+    uniqueLeaveTypeCode: unique("leave_type_config_admin_code_unique").on(
+      table.adminId,
+      table.code,
+    ),
+  }),
+);
+
+export const leavePolicy = pgTable(
+  "leave_policy",
+  {
+    id: serial("id").primaryKey(),
+    adminId: integer("admin_id")
+      .notNull()
+      .references(() => users.id),
+    organizationId: integer("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    name: varchar("name", { length: 120 }).notNull(),
+    description: text("description"),
+    applicableTo: varchar("applicable_to", { length: 120 }),
+    isDefault: boolean("is_default").default(false).notNull(),
+    leaveTypeIds: jsonb("leave_type_ids")
+      .$type<number[]>()
+      .default(sql`'[]'::jsonb`)
+      .notNull(),
+    createdBy: integer("created_by").references(() => users.id),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    uniquePolicyName: unique("leave_policy_admin_name_unique").on(
+      table.adminId,
+      table.name,
+    ),
+  }),
+);
+
+export const leavePolicyAssignment = pgTable("leave_policy_assignment", {
+  id: serial("id").primaryKey(),
+  adminId: integer("admin_id")
+    .notNull()
+    .references(() => users.id),
+  organizationId: integer("organization_id")
+    .notNull()
+    .references(() => organizations.id),
+  empId: integer("emp_id")
+    .notNull()
+    .references(() => Employee.userId),
+  policyId: integer("policy_id")
+    .notNull()
+    .references(() => leavePolicy.id),
+  effectiveDate: date("effective_date").notNull(),
+  assignedBy: integer("assigned_by").references(() => users.id),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const compensatoryLeaveRequest = pgTable("compensatory_leave_request", {
+  id: serial("id").primaryKey(),
+  adminId: integer("admin_id")
+    .notNull()
+    .references(() => users.id),
+  organizationId: integer("organization_id")
+    .notNull()
+    .references(() => organizations.id),
+  empId: integer("emp_id")
+    .notNull()
+    .references(() => Employee.userId),
+  workDate: date("work_date").notNull(),
+  creditedDays: integer("credited_days").default(1).notNull(),
+  reason: text("reason"),
+  status: shiftRequestStatusEnum("status").default("submitted").notNull(),
+  reviewedBy: integer("reviewed_by").references(() => users.id),
+  reviewedAt: timestamp("reviewed_at"),
+  rejectionReason: text("rejection_reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const leaveEncashmentRequest = pgTable("leave_encashment_request", {
+  id: serial("id").primaryKey(),
+  adminId: integer("admin_id")
+    .notNull()
+    .references(() => users.id),
+  organizationId: integer("organization_id")
+    .notNull()
+    .references(() => organizations.id),
+  empId: integer("emp_id")
+    .notNull()
+    .references(() => Employee.userId),
+  leaveTypeId: integer("leave_type_id").references(() => leaveTypeConfig.id),
+  leaveTypeName: varchar("leave_type_name", { length: 120 }).notNull(),
+  daysAvailable: integer("days_available").notNull(),
+  daysRequested: integer("days_requested").notNull(),
+  dailyRate: decimal("daily_rate", { precision: 12, scale: 2 }).notNull(),
+  amount: decimal("amount", { precision: 14, scale: 2 }).notNull(),
+  status: shiftRequestStatusEnum("status").default("submitted").notNull(),
+  reviewedBy: integer("reviewed_by").references(() => users.id),
+  reviewedAt: timestamp("reviewed_at"),
+  rejectionReason: text("rejection_reason"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

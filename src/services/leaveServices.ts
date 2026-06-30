@@ -9,6 +9,29 @@ class LeaveServices {
     this.leaveRepo = new LeaveRepository();
   }
 
+  private async getEmployeeOwnership(userId: number) {
+    const [employee] = await db
+      .select()
+      .from(Employee)
+      .where(eq(Employee.userId, userId))
+      .limit(1);
+    return employee ?? null;
+  }
+
+  private async assertAdminOwnsEmployee(
+    currentUser: typeof users.$inferSelect,
+    userId: number,
+  ) {
+    const employee = await this.getEmployeeOwnership(userId);
+    if (!employee) {
+      throw new Error("Employee not found with user ID: " + userId);
+    }
+    if (currentUser.roleId !== 0 && employee.adminId !== currentUser.id) {
+      throw new Error("You are not allowed to manage leave for this employee");
+    }
+    return employee;
+  }
+
   async createLeave(
     data: typeof leave.$inferInsert,
     currentUser: typeof users.$inferSelect,
@@ -24,15 +47,7 @@ class LeaveServices {
     }
 
     // Check if employee exists with this userId
-    const employee = await db
-      .select()
-      .from(Employee)
-      .where(eq(Employee.userId, data.empId))
-      .limit(1);
-
-    if (!employee || employee.length === 0) {
-      throw new Error("Employee not found with user ID: " + data.empId);
-    }
+    await this.assertAdminOwnsEmployee(currentUser, data.empId);
 
     // Calculate total leave from individual leave types
     const sickLeave = data.sickLeave || 0;
@@ -101,15 +116,7 @@ class LeaveServices {
       throw new Error("empId is required");
     }
 
-    const [employee] = await db
-      .select()
-      .from(Employee)
-      .where(eq(Employee.userId, data.empId))
-      .limit(1);
-
-    if (!employee) {
-      throw new Error("Employee not found with user ID: " + data.empId);
-    }
+    await this.assertAdminOwnsEmployee(currentUser, data.empId);
 
     const existing = await this.leaveRepo.getBalanceByEmpUserId(data.empId);
 
@@ -151,7 +158,16 @@ class LeaveServices {
     };
   }
 
-  async getBalanceByUserId(userId: number) {
+  async getBalanceByUserId(
+    userId: number,
+    currentUser?: typeof users.$inferSelect,
+  ) {
+    if (
+      currentUser &&
+      (currentUser.isAdmin || currentUser.type === "admin" || currentUser.roleId === 0 || currentUser.roleId === 1)
+    ) {
+      await this.assertAdminOwnsEmployee(currentUser, userId);
+    }
     const result = await this.leaveRepo.getBalanceByEmpUserId(userId);
     if (!result) {
       return {
@@ -178,8 +194,10 @@ class LeaveServices {
     };
   }
 
-  async getLeaveById(id: number) {
-    const result = await this.leaveRepo.getLeaveById(id);
+  async getLeaveById(id: number, currentUser?: typeof users.$inferSelect) {
+    const result = currentUser && (currentUser.roleId === 0 || currentUser.roleId === 1)
+      ? await this.leaveRepo.getLeaveByIdForAdmin(id, currentUser.id)
+      : await this.leaveRepo.getLeaveById(id);
     if (!result) {
       throw new Error("Leave not found");
     }
@@ -190,7 +208,10 @@ class LeaveServices {
     };
   }
 
-  async getLeavesByEmployeeId(empId: number) {
+  async getLeavesByEmployeeId(empId: number, currentUser?: typeof users.$inferSelect) {
+    if (currentUser && (currentUser.roleId === 0 || currentUser.roleId === 1)) {
+      await this.assertAdminOwnsEmployee(currentUser, empId);
+    }
     const result = await this.leaveRepo.getLeavesByEmployeeId(empId);
     return {
       message: "successfully fetched leaves by employee",
@@ -199,8 +220,10 @@ class LeaveServices {
     };
   }
 
-  async getAllLeaves() {
-    const result = await this.leaveRepo.getAllLeaves();
+  async getAllLeaves(currentUser?: typeof users.$inferSelect) {
+    const result = currentUser && (currentUser.roleId === 0 || currentUser.roleId === 1)
+      ? (await this.leaveRepo.getAllLeavesByAdminId(currentUser.id)).map((item) => item.leave)
+      : await this.leaveRepo.getAllLeaves();
     return {
       message: "successfully fetched leaves",
       success: true,
@@ -208,7 +231,10 @@ class LeaveServices {
     };
   }
 
-  async getLeavesByUserId(userId: number) {
+  async getLeavesByUserId(userId: number, currentUser?: typeof users.$inferSelect) {
+    if (currentUser && (currentUser.roleId === 0 || currentUser.roleId === 1)) {
+      await this.assertAdminOwnsEmployee(currentUser, userId);
+    }
     const result = await this.leaveRepo.getLeavesByUserId(userId);
     return {
       message: "successfully fetched leaves by user",
@@ -298,6 +324,7 @@ class LeaveServices {
     }
 
     // Get existing leave data for the user
+    await this.assertAdminOwnsEmployee(currentUser, userId);
     const existingLeaves = await this.leaveRepo.getLeavesByUserId(userId);
     if (!existingLeaves || existingLeaves.length === 0) {
       throw new Error("Leave record not found for this user");
@@ -387,6 +414,7 @@ class LeaveServices {
       throw new Error("Only admins can delete leave records");
     }
 
+    await this.assertAdminOwnsEmployee(currentUser, userId);
     const result = await this.leaveRepo.deleteLeaveByUserId(userId);
     return {
       message: "successfully deleted leave",

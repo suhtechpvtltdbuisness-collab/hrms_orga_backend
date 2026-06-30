@@ -11,6 +11,9 @@ leaveRequestRouter.post("/", authenticate, (req, res, next) =>
 leaveRequestRouter.get("/", authenticate, (req, res, next) =>
   leaveRequestController.getLeaveRequests(req, res, next),
 );
+leaveRequestRouter.get("/types", authenticate, (req, res, next) =>
+  leaveRequestController.getAvailableLeaveTypes(req, res, next),
+);
 leaveRequestRouter.get("/:id", authenticate, (req, res, next) =>
   leaveRequestController.getLeaveRequestById(req, res, next),
 );

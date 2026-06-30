@@ -31,7 +31,7 @@ class LeaveController {
   async getLeaveById(req: Request, res: Response, next: NextFunction) {
     try {
       const id = Number(req.params.id);
-      const result = await this.leaveServices.getLeaveById(id);
+      const result = await this.leaveServices.getLeaveById(id, res.locals.user);
       res.status(200).json(result);
     } catch (error) {
       next(error);
@@ -41,7 +41,7 @@ class LeaveController {
   async getLeavesByEmployeeId(req: Request, res: Response, next: NextFunction) {
     try {
       const empId = Number(req.params.empId);
-      const result = await this.leaveServices.getLeavesByEmployeeId(empId);
+      const result = await this.leaveServices.getLeavesByEmployeeId(empId, res.locals.user);
       res.status(200).json(result);
     } catch (error) {
       next(error);
@@ -50,7 +50,7 @@ class LeaveController {
 
   async getAllLeaves(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await this.leaveServices.getAllLeaves();
+      const result = await this.leaveServices.getAllLeaves(res.locals.user);
       res.status(200).json(result);
     } catch (error) {
       next(error);
@@ -60,7 +60,7 @@ class LeaveController {
   async getLeavesByUserId(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = Number(req.params.userId);
-      const result = await this.leaveServices.getLeavesByUserId(userId);
+      const result = await this.leaveServices.getLeavesByUserId(userId, res.locals.user);
       res.status(200).json(result);
     } catch (error) {
       next(error);
@@ -107,7 +107,7 @@ class LeaveController {
   async getBalanceByUserId(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = Number(req.params.userId);
-      const result = await this.leaveServices.getBalanceByUserId(userId);
+      const result = await this.leaveServices.getBalanceByUserId(userId, res.locals.user);
       res.status(200).json(result);
     } catch (error) {
       next(error);

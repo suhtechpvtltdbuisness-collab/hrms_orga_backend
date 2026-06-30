@@ -38,6 +38,17 @@ class LeaveRequestController {
     }
   }
 
+  async getAvailableLeaveTypes(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await this.leaveRequestServices.getAvailableLeaveTypes(
+        res.locals.user,
+      );
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message });
+    }
+  }
+
   async getLeaveRequestById(req: Request, res: Response, next: NextFunction) {
     try {
       const id = Number(req.params.id);

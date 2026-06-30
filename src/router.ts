@@ -15,6 +15,7 @@ import shiftTypeRouter from "./router/shiftTypeRouter.js";
 import shiftRequestRouter from "./router/shiftRequestRouter.js";
 import trainingRouter from "./router/trainingRouter.js";
 import leaveRequestRouter from "./router/leaveRequestRouter.js";
+import leaveManagementRouter from "./router/leaveManagementRouter.js";
 import subscriptionRouter from "./router/subscriptionRouter.js";
 import uploadRouter from "./router/uploadRouter.js";
 import onboardingRouter from "./router/onboardingRouter.js";
@@ -37,6 +38,7 @@ router.use("/users", userRouter);
 router.use("/payroll", payrollRouter);
 router.use("/leave", leaveRouter);
 router.use("/leave-requests", leaveRequestRouter);
+router.use("/leave-admin", leaveManagementRouter);
 router.use("/employment", employmentRouter);
 router.use("/employees", employeeRouter);
 router.use("/documents", documentRouter);
@@ -53,4 +55,3 @@ router.use("/organizations", organizationRouter);
 router.use("/hiring", hiringRouter);
 
 export default router;
-

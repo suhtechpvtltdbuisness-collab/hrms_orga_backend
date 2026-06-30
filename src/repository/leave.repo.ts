@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { leave, Employee } from "../db/schema.js";
 import { db } from "../db/connection.js";
 
@@ -42,6 +42,24 @@ class LeaveRepository {
   async getAllLeaves() {
     const result = await db.select().from(leave);
     return result;
+  }
+
+  async getAllLeavesByAdminId(adminId: number) {
+    return db
+      .select({ leave })
+      .from(leave)
+      .innerJoin(Employee, eq(Employee.userId, leave.empId))
+      .where(eq(Employee.adminId, adminId));
+  }
+
+  async getLeaveByIdForAdmin(id: number, adminId: number) {
+    const [result] = await db
+      .select({ leave })
+      .from(leave)
+      .innerJoin(Employee, eq(Employee.userId, leave.empId))
+      .where(and(eq(leave.id, id), eq(Employee.adminId, adminId)))
+      .limit(1);
+    return result?.leave ?? null;
   }
 
   async getLeavesByUserId(userId: number) {
