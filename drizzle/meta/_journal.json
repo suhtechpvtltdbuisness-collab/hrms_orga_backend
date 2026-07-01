@@ -134,6 +134,13 @@
       "when": 1782791124594,
       "tag": "0018_even_oracle",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1782883987437,
+      "tag": "0019_mighty_gauntlet",
+      "breakpoints": true
     }
   ]
 }

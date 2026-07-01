@@ -397,6 +397,35 @@ export const shiftType = pgTable("shift_type", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// A dated roster entry. Missing rows are treated as "Unassigned" by the roster API.
+export const shiftAssignment = pgTable(
+  "shift_assignment",
+  {
+    id: serial("id").primaryKey(),
+    adminId: integer("admin_id")
+      .notNull()
+      .references(() => users.id),
+    organizationId: integer("organization_id").references(() => organizations.id),
+    empId: integer("emp_id")
+      .notNull()
+      .references(() => Employee.userId),
+    shiftTypeId: integer("shift_type_id")
+      .notNull()
+      .references(() => shiftType.id),
+    rosterDate: date("roster_date").notNull(),
+    assignedBy: integer("assigned_by").references(() => users.id),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    uniqueEmployeeRosterDate: unique("shift_assignment_admin_emp_date_unique").on(
+      table.adminId,
+      table.empId,
+      table.rosterDate,
+    ),
+  }),
+);
+
 // Shift Request Table
 export const shiftRequest = pgTable("shift_request", {
   id: serial("id").primaryKey(),
