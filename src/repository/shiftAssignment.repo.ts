@@ -64,6 +64,15 @@ export class ShiftAssignmentRepository {
       .where(and(eq(Employee.adminId, adminId), inArray(Employee.userId, employeeIds)));
   }
 
+  async getEmployeeByUserId(userId: number) {
+    const [employee] = await db
+      .select({ userId: Employee.userId, adminId: Employee.adminId })
+      .from(Employee)
+      .where(eq(Employee.userId, userId))
+      .limit(1);
+    return employee;
+  }
+
   async getShiftTypes(adminId: number, shiftTypeIds: number[]) {
     if (!shiftTypeIds.length) return [];
     return db

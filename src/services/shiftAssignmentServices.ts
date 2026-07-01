@@ -134,14 +134,27 @@ export class ShiftAssignmentServices {
     query: Record<string, unknown>,
     currentUser: typeof users.$inferSelect,
   ) {
-    requireAdmin(currentUser);
     if (!Number.isInteger(employeeId) || employeeId <= 0) throw new Error("Invalid employee ID");
-    const employee = await this.repo.getEmployees(currentUser.id, [employeeId]);
-    if (!employee.length) throw new Error("Employee not found for this admin");
+
+    const isAdmin = currentUser.isAdmin || currentUser.roleId === 0 || currentUser.roleId === 1;
+    if (!isAdmin && currentUser.id !== employeeId) {
+      throw new Error("Employees can only fetch their own shift history");
+    }
+
+    let adminId = currentUser.id;
+    if (isAdmin) {
+      const employee = await this.repo.getEmployees(currentUser.id, [employeeId]);
+      if (!employee.length) throw new Error("Employee not found for this admin");
+    } else {
+      const employee = await this.repo.getEmployeeByUserId(employeeId);
+      if (!employee) throw new Error("Employee record not found");
+      adminId = employee.adminId;
+    }
+
     const fromDate = query.fromDate === undefined ? undefined : validateDate(query.fromDate, "fromDate");
     const toDate = query.toDate === undefined ? undefined : validateDate(query.toDate, "toDate");
     if (fromDate && toDate && fromDate > toDate) throw new Error("fromDate cannot be after toDate");
-    const data = await this.repo.getEmployeeHistory(currentUser.id, employeeId, fromDate, toDate);
+    const data = await this.repo.getEmployeeHistory(adminId, employeeId, fromDate, toDate);
     return { success: true, message: "Employee shift history fetched successfully", data };
   }
 
