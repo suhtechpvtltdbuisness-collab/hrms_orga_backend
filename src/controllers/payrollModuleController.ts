@@ -274,7 +274,7 @@ class PayrollModuleController {
 
   async getSalarySlips(req: Request, res: Response, next: NextFunction) {
     try {
-      res.json(await this.payrollModuleServices.getSalarySlips());
+      res.json(await this.payrollModuleServices.getSalarySlips(res.locals.user));
     } catch (error) {
       this.handleError(error, next);
     }

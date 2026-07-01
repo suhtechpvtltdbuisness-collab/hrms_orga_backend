@@ -277,7 +277,12 @@ export class AttendanceService {
     empId: number,
     currentUser: typeof users.$inferSelect,
   ) {
-    if (!currentUser.isAdmin) {
+    const isAdmin =
+      currentUser.isAdmin ||
+      currentUser.roleId === 0 ||
+      currentUser.roleId === 1;
+
+    if (!isAdmin) {
       throw new Error("Only admins can view employee attendance info");
     }
 

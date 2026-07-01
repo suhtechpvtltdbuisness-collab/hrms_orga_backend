@@ -22,7 +22,7 @@ class ShiftTypeController {
 
   async getAllShiftTypes(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await this.shiftTypeServices.getAllShiftTypes();
+      const result = await this.shiftTypeServices.getAllShiftTypes(res.locals.user);
       res.status(200).json(result);
     } catch (error: any) {
       res.status(500).json({ success: false, message: error.message });
@@ -32,7 +32,7 @@ class ShiftTypeController {
   async getShiftTypeById(req: Request, res: Response, next: NextFunction) {
     try {
       const id = Number(req.params.id);
-      const result = await this.shiftTypeServices.getShiftTypeById(id);
+      const result = await this.shiftTypeServices.getShiftTypeById(id, res.locals.user);
       res.status(200).json(result);
     } catch (error: any) {
       res.status(404).json({ success: false, message: error.message });

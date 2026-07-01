@@ -8,36 +8,36 @@ class ShiftTypeRepository {
     return result[0];
   }
 
-  async getAllShiftTypes() {
+  async getAllShiftTypes(adminId: number) {
     return await db
       .select()
       .from(shiftType)
-      .where(eq(shiftType.isDeleted, false));
+      .where(and(eq(shiftType.isDeleted, false), eq(shiftType.createdBy, adminId)));
   }
 
-  async getShiftTypeById(id: number) {
+  async getShiftTypeById(id: number, adminId: number) {
     const [result] = await db
       .select()
       .from(shiftType)
-      .where(and(eq(shiftType.id, id), eq(shiftType.isDeleted, false)))
+      .where(and(eq(shiftType.id, id), eq(shiftType.createdBy, adminId), eq(shiftType.isDeleted, false)))
       .limit(1);
     return result;
   }
 
-  async getShiftTypeByName(name: string) {
+  async getShiftTypeByName(name: string, adminId: number) {
     const [result] = await db
       .select()
       .from(shiftType)
-      .where(and(eq(shiftType.name, name), eq(shiftType.isDeleted, false)))
+      .where(and(eq(shiftType.name, name), eq(shiftType.createdBy, adminId), eq(shiftType.isDeleted, false)))
       .limit(1);
     return result;
   }
 
-  async updateShiftType(id: number, data: Partial<typeof shiftType.$inferInsert>) {
+  async updateShiftType(id: number, adminId: number, data: Partial<typeof shiftType.$inferInsert>) {
     const [result] = await db
       .update(shiftType)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(shiftType.id, id))
+      .where(and(eq(shiftType.id, id), eq(shiftType.createdBy, adminId)))
       .returning();
     return result;
   }

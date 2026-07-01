@@ -1,5 +1,7 @@
 import ShiftTypeRepository from "../repository/shiftType.repo.js";
-import { shiftType, users } from "../db/schema.js";
+import { Employee, shiftType, users } from "../db/schema.js";
+import { db } from "../db/connection.js";
+import { eq } from "drizzle-orm";
 
 function computeTotalHours(startTime: string, endTime: string): string {
   const toMinutes = (time: string) => {
@@ -32,6 +34,17 @@ class ShiftTypeServices {
     this.shiftTypeRepo = new ShiftTypeRepository();
   }
 
+  private async getAdminId(currentUser: typeof users.$inferSelect) {
+    if (currentUser.isAdmin || currentUser.roleId === 0 || currentUser.roleId === 1) return currentUser.id;
+    const [employee] = await db
+      .select({ adminId: Employee.adminId })
+      .from(Employee)
+      .where(eq(Employee.userId, currentUser.id))
+      .limit(1);
+    if (!employee) throw new Error("Employee record not found");
+    return employee.adminId;
+  }
+
   async createShiftType(
     data: typeof shiftType.$inferInsert,
     currentUser: typeof users.$inferSelect,
@@ -44,7 +57,7 @@ class ShiftTypeServices {
       throw new Error("Name, startTime, and endTime are required");
     }
 
-    const existing = await this.shiftTypeRepo.getShiftTypeByName(data.name);
+    const existing = await this.shiftTypeRepo.getShiftTypeByName(data.name, currentUser.id);
     if (existing) {
       throw new Error("Shift type with this name already exists");
     }
@@ -62,8 +75,8 @@ class ShiftTypeServices {
     };
   }
 
-  async getAllShiftTypes() {
-    const result = await this.shiftTypeRepo.getAllShiftTypes();
+  async getAllShiftTypes(currentUser: typeof users.$inferSelect) {
+    const result = await this.shiftTypeRepo.getAllShiftTypes(await this.getAdminId(currentUser));
     return {
       message: "Shift types fetched successfully",
       success: true,
@@ -71,8 +84,8 @@ class ShiftTypeServices {
     };
   }
 
-  async getShiftTypeById(id: number) {
-    const result = await this.shiftTypeRepo.getShiftTypeById(id);
+  async getShiftTypeById(id: number, currentUser: typeof users.$inferSelect) {
+    const result = await this.shiftTypeRepo.getShiftTypeById(id, await this.getAdminId(currentUser));
     if (!result) {
       throw new Error("Shift type not found");
     }
@@ -93,19 +106,19 @@ class ShiftTypeServices {
       throw new Error("Only admins can update shift types");
     }
 
-    const existing = await this.shiftTypeRepo.getShiftTypeById(id);
+    const existing = await this.shiftTypeRepo.getShiftTypeById(id, currentUser.id);
     if (!existing) {
       throw new Error("Shift type not found");
     }
 
     if (data.name && data.name !== existing.name) {
-      const duplicate = await this.shiftTypeRepo.getShiftTypeByName(data.name);
+      const duplicate = await this.shiftTypeRepo.getShiftTypeByName(data.name, currentUser.id);
       if (duplicate) {
         throw new Error("Shift type with this name already exists");
       }
     }
 
-    const result = await this.shiftTypeRepo.updateShiftType(id, data);
+    const result = await this.shiftTypeRepo.updateShiftType(id, currentUser.id, data);
     return {
       message: "Shift type updated successfully",
       success: true,

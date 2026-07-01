@@ -518,7 +518,12 @@ export class PayrollModuleRepository {
     return updated;
   }
 
-  async getSalarySlips() {
+  async getSalarySlips(filters: { empId?: number; adminId?: number; finalizedOnly?: boolean } = {}) {
+    const conditions = [eq(salarySlip.isDeleted, false)];
+    if (filters.empId) conditions.push(eq(payrollEntry.empId, filters.empId));
+    if (filters.adminId) conditions.push(eq(Employee.adminId, filters.adminId));
+    if (filters.finalizedOnly) conditions.push(ne(salarySlip.status, "draft"));
+
     return await db
       .select({
         salarySlip,
@@ -528,7 +533,8 @@ export class PayrollModuleRepository {
       .from(salarySlip)
       .innerJoin(payrollEntry, eq(salarySlip.payrollEntryId, payrollEntry.id))
       .innerJoin(users, eq(payrollEntry.empId, users.id))
-      .where(eq(salarySlip.isDeleted, false))
+      .innerJoin(Employee, eq(Employee.userId, payrollEntry.empId))
+      .where(and(...conditions))
       .orderBy(desc(salarySlip.id));
   }
 

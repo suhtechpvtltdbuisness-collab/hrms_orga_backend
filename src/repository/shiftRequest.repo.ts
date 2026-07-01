@@ -1,10 +1,11 @@
 import { db } from "../db/connection.js";
-import { shiftRequest, shiftType, users } from "../db/schema.js";
+import { Employee, shiftRequest, shiftType, users } from "../db/schema.js";
 import { eq, and, desc } from "drizzle-orm";
 
 export type ShiftRequestFilters = {
   status?: string;
   empId?: number;
+  adminId?: number;
 };
 
 class ShiftRequestRepository {
@@ -45,23 +46,28 @@ class ShiftRequestRepository {
     if (filters.empId) {
       conditions.push(eq(shiftRequest.empId, filters.empId));
     }
+    if (filters.adminId) conditions.push(eq(Employee.adminId, filters.adminId));
 
     return await db
       .select(this.selectFields)
       .from(shiftRequest)
       .leftJoin(users, eq(shiftRequest.empId, users.id))
+      .innerJoin(Employee, eq(Employee.userId, shiftRequest.empId))
       .leftJoin(shiftType, eq(shiftRequest.shiftTypeId, shiftType.id))
       .where(and(...conditions))
       .orderBy(desc(shiftRequest.createdAt));
   }
 
-  async getShiftRequestById(id: number) {
+  async getShiftRequestById(id: number, adminId?: number) {
+    const conditions = [eq(shiftRequest.id, id), eq(shiftRequest.isDeleted, false)];
+    if (adminId) conditions.push(eq(Employee.adminId, adminId));
     const [result] = await db
       .select(this.selectFields)
       .from(shiftRequest)
       .leftJoin(users, eq(shiftRequest.empId, users.id))
+      .innerJoin(Employee, eq(Employee.userId, shiftRequest.empId))
       .leftJoin(shiftType, eq(shiftRequest.shiftTypeId, shiftType.id))
-      .where(and(eq(shiftRequest.id, id), eq(shiftRequest.isDeleted, false)))
+      .where(and(...conditions))
       .limit(1);
     return result;
   }

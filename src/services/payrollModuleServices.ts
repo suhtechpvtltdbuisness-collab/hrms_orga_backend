@@ -667,8 +667,12 @@ export class PayrollModuleServices {
     return response("Salary slip generated", slip);
   }
 
-  async getSalarySlips() {
-    return response("Salary slips fetched", await this.repo.getSalarySlips());
+  async getSalarySlips(currentUser: CurrentUser) {
+    const isAdmin = currentUser.isAdmin || currentUser.roleId === 0 || currentUser.roleId === 1;
+    const filters = isAdmin
+      ? { adminId: currentUser.id }
+      : { empId: currentUser.id, finalizedOnly: true };
+    return response("Salary slips fetched", await this.repo.getSalarySlips(filters));
   }
 
   async finalizeSalarySlip(id: number, currentUser: CurrentUser) {
@@ -686,6 +690,15 @@ export class PayrollModuleServices {
   async signOffSalarySlip(id: number, currentUser: CurrentUser) {
     const slip = await this.repo.getSalarySlipById(id);
     if (!slip) throw new Error("Salary slip not found");
+    const entry = await this.repo.getPayrollEntryById(slip.payrollEntryId);
+    const isAdmin = currentUser.isAdmin || currentUser.roleId === 0 || currentUser.roleId === 1;
+    if (!entry || (!isAdmin && entry.payrollEntry.empId !== currentUser.id)) {
+      throw new Error("Salary slip not found");
+    }
+    if (isAdmin) {
+      const employee = await this.repo.findEmployeeIdentity(entry.payrollEntry.empId);
+      if (!employee || employee.adminId !== currentUser.id) throw new Error("Salary slip not found");
+    }
     const updated = await this.repo.updateSalarySlip(id, {
       status: "signed_off",
       isLocked: true,

@@ -29,12 +29,23 @@ export const getEmployeeAttendanceInfo = async (
   res: Response,
 ) => {
   try {
+    const empId = Number(req.params.empId);
+    if (!Number.isInteger(empId) || empId <= 0) {
+      res.status(400).json({ error: "Invalid employee ID" });
+      return;
+    }
+
     const info = await attendanceService.getEmployeeAttendanceInfo(
-      parseInt(req.params.empId as string),
+      empId,
       res.locals.user,
     );
     res.json(info);
   } catch (error: any) {
+    if (error.message === "Only admins can view employee attendance info") {
+      res.status(403).json({ error: error.message });
+      return;
+    }
+
     res.status(404).json({ error: error.message });
   }
 };

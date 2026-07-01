@@ -5,7 +5,23 @@ import { authenticate, authorizeAdmin } from "../middleware/auth.js";
 const leaveManagementRouter = Router();
 const controller = new LeaveManagementController();
 
-leaveManagementRouter.use(authenticate, authorizeAdmin);
+leaveManagementRouter.use(authenticate);
+
+// Employee self-service routes. Service-level checks force employees to their own data.
+leaveManagementRouter.get("/encashment-eligibility", (req, res, next) =>
+  controller.getEncashmentEligibility(req, res, next),
+);
+leaveManagementRouter.get("/encashment-requests", (req, res, next) =>
+  controller.getEncashmentRequests(req, res, next),
+);
+leaveManagementRouter.post("/encashment-requests", (req, res, next) =>
+  controller.createEncashmentRequest(req, res, next),
+);
+leaveManagementRouter.post("/encashment-requests/all", (req, res, next) =>
+  controller.createEncashAllRequest(req, res, next),
+);
+
+leaveManagementRouter.use(authorizeAdmin);
 
 leaveManagementRouter.get("/options", (req, res, next) =>
   controller.getOptions(req, res, next),
@@ -102,12 +118,6 @@ leaveManagementRouter.patch("/comp-off-requests/:id/reject", (req, res, next) =>
   controller.rejectCompOffRequest(req, res, next),
 );
 
-leaveManagementRouter.get("/encashment-requests", (req, res, next) =>
-  controller.getEncashmentRequests(req, res, next),
-);
-leaveManagementRouter.post("/encashment-requests", (req, res, next) =>
-  controller.createEncashmentRequest(req, res, next),
-);
 leaveManagementRouter.patch("/encashment-requests/:id/approve", (req, res, next) =>
   controller.approveEncashmentRequest(req, res, next),
 );

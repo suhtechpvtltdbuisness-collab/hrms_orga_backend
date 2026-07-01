@@ -366,12 +366,31 @@ class LeaveManagementController {
         {
           status: req.query.status ? String(req.query.status) : undefined,
           search: req.query.search ? String(req.query.search) : undefined,
+          empId: req.query.empId ? Number(req.query.empId) : undefined,
         },
         res.locals.user,
       );
       res.status(200).json(result);
     } catch (error) {
       this.handleError(res, error, "Failed to fetch leave encashment requests");
+    }
+  }
+
+  async getEncashmentEligibility(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await this.services.getEncashmentEligibility(res.locals.user);
+      res.status(200).json(result);
+    } catch (error) {
+      this.handleError(res, error, "Failed to fetch leave encashment eligibility");
+    }
+  }
+
+  async createEncashAllRequest(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await this.services.createEncashAllRequest(res.locals.user);
+      res.status(201).json(result);
+    } catch (error) {
+      this.handleError(res, error, "Failed to encash all available leave");
     }
   }
 

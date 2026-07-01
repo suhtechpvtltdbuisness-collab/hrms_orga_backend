@@ -7,6 +7,7 @@ import {
   inArray,
   lte,
   or,
+  sql,
 } from "drizzle-orm";
 import { db } from "../db/connection.js";
 import {
@@ -21,6 +22,7 @@ import {
   leavePolicy,
   leavePolicyAssignment,
   leaveTypeConfig,
+  salaryStructureAssignment,
   users,
 } from "../db/schema.js";
 
@@ -569,7 +571,7 @@ class LeaveManagementRepository {
 
   async getEncashmentRequests(
     adminId: number,
-    filters: { status?: string; search?: string },
+    filters: { status?: string; search?: string; empId?: number },
   ) {
     const conditions = [eq(leaveEncashmentRequest.adminId, adminId)];
     if (filters.status) {
@@ -587,6 +589,9 @@ class LeaveManagementRepository {
           ilike(users.email, `%${filters.search}%`),
         )!,
       );
+    }
+    if (filters.empId) {
+      conditions.push(eq(leaveEncashmentRequest.empId, filters.empId));
     }
 
     return db
@@ -628,6 +633,88 @@ class LeaveManagementRepository {
       .values(data)
       .returning();
     return result;
+  }
+
+  async createEncashmentRequests(data: Array<typeof leaveEncashmentRequest.$inferInsert>) {
+    return db.insert(leaveEncashmentRequest).values(data).returning();
+  }
+
+  async getEmployeeOwner(empId: number) {
+    const [result] = await db
+      .select({ adminId: Employee.adminId, organizationId: users.organizationId })
+      .from(Employee)
+      .innerJoin(users, eq(users.id, Employee.userId))
+      .where(and(eq(Employee.userId, empId), eq(users.isDeleted, false), eq(users.active, true)))
+      .limit(1);
+    return result ?? null;
+  }
+
+  async getEncashableLeaveTypes(adminId: number) {
+    return db
+      .select()
+      .from(leaveTypeConfig)
+      .where(
+        and(
+          eq(leaveTypeConfig.adminId, adminId),
+          eq(leaveTypeConfig.encashable, true),
+          eq(leaveTypeConfig.isPaid, true),
+          eq(leaveTypeConfig.isActive, true),
+        ),
+      )
+      .orderBy(leaveTypeConfig.name);
+  }
+
+  async findEncashableLeaveType(adminId: number, leaveTypeId?: number | null, name?: string | null) {
+    const conditions = [
+      eq(leaveTypeConfig.adminId, adminId),
+      eq(leaveTypeConfig.encashable, true),
+      eq(leaveTypeConfig.isPaid, true),
+      eq(leaveTypeConfig.isActive, true),
+    ];
+    if (leaveTypeId) conditions.push(eq(leaveTypeConfig.id, leaveTypeId));
+    else if (name) {
+      conditions.push(or(ilike(leaveTypeConfig.name, name), ilike(leaveTypeConfig.code, name))!);
+    } else return null;
+
+    const [result] = await db.select().from(leaveTypeConfig).where(and(...conditions)).limit(1);
+    return result ?? null;
+  }
+
+  async getPendingEncashmentDays(adminId: number, empId: number, leaveTypeName: string) {
+    const [result] = await db
+      .select({ days: sql<number>`coalesce(sum(${leaveEncashmentRequest.daysRequested}), 0)` })
+      .from(leaveEncashmentRequest)
+      .where(
+        and(
+          eq(leaveEncashmentRequest.adminId, adminId),
+          eq(leaveEncashmentRequest.empId, empId),
+          eq(leaveEncashmentRequest.leaveTypeName, leaveTypeName),
+          eq(leaveEncashmentRequest.status, "submitted"),
+        ),
+      );
+    return Number(result?.days ?? 0);
+  }
+
+  async getActiveSalaryAssignment(empId: number) {
+    const today = new Date().toISOString().slice(0, 10);
+    const [result] = await db
+      .select({ baseSalary: salaryStructureAssignment.baseSalary })
+      .from(salaryStructureAssignment)
+      .where(
+        and(
+          eq(salaryStructureAssignment.empId, empId),
+          eq(salaryStructureAssignment.isActive, true),
+          eq(salaryStructureAssignment.isDeleted, false),
+          lte(salaryStructureAssignment.fromDate, today),
+          or(
+            sql`${salaryStructureAssignment.toDate} is null`,
+            gte(salaryStructureAssignment.toDate, today),
+          )!,
+        ),
+      )
+      .orderBy(desc(salaryStructureAssignment.fromDate))
+      .limit(1);
+    return result ?? null;
   }
 
   async updateEncashmentRequest(

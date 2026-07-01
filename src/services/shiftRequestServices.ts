@@ -31,6 +31,7 @@ class ShiftRequestServices {
     if (!employee) {
       throw new Error("Employee not found with user ID: " + empId);
     }
+    return employee;
   }
 
   async createShiftRequest(
@@ -57,10 +58,15 @@ class ShiftRequestServices {
       throw new Error("fromDate cannot be after toDate");
     }
 
-    await this.validateEmployee(empId);
+    const employee = await this.validateEmployee(empId);
+    const requesterAdminId = currentUser.isAdmin
+      ? currentUser.id
+      : (await this.validateEmployee(currentUser.id)).adminId;
+    if (employee.adminId !== requesterAdminId) throw new Error("Employee does not belong to this organization");
 
     const shiftTypeRecord = await this.shiftTypeRepo.getShiftTypeById(
       body.shiftTypeId,
+      requesterAdminId,
     );
     if (!shiftTypeRecord) {
       throw new Error("Shift type not found");
@@ -76,7 +82,7 @@ class ShiftRequestServices {
       isDeleted: false,
     });
 
-    const enriched = await this.shiftRequestRepo.getShiftRequestById(result.id);
+    const enriched = await this.shiftRequestRepo.getShiftRequestById(result.id, requesterAdminId);
 
     return {
       message: "Shift request submitted successfully",
@@ -89,11 +95,14 @@ class ShiftRequestServices {
     filters: { status?: string; empId?: number },
     currentUser: typeof users.$inferSelect,
   ) {
-    const queryFilters: { status?: string; empId?: number } = { ...filters };
+    const queryFilters: { status?: string; empId?: number; adminId?: number } = { ...filters };
 
     // Non-admins (employees, managers) can only view their own requests
     if (!currentUser.isAdmin) {
       queryFilters.empId = currentUser.id;
+      queryFilters.adminId = (await this.validateEmployee(currentUser.id)).adminId;
+    } else {
+      queryFilters.adminId = currentUser.id;
     }
 
     const result = await this.shiftRequestRepo.getShiftRequests(queryFilters);
@@ -109,7 +118,8 @@ class ShiftRequestServices {
     id: number,
     currentUser: typeof users.$inferSelect,
   ) {
-    const result = await this.shiftRequestRepo.getShiftRequestById(id);
+    const adminId = currentUser.isAdmin ? currentUser.id : (await this.validateEmployee(currentUser.id)).adminId;
+    const result = await this.shiftRequestRepo.getShiftRequestById(id, adminId);
     if (!result) {
       throw new Error("Shift request not found");
     }
@@ -133,7 +143,7 @@ class ShiftRequestServices {
       throw new Error("Only admins can approve shift requests");
     }
 
-    const existing = await this.shiftRequestRepo.getShiftRequestById(id);
+    const existing = await this.shiftRequestRepo.getShiftRequestById(id, currentUser.id);
     if (!existing) {
       throw new Error("Shift request not found");
     }
@@ -149,7 +159,7 @@ class ShiftRequestServices {
       rejectionReason: null,
     });
 
-    const enriched = await this.shiftRequestRepo.getShiftRequestById(id);
+    const enriched = await this.shiftRequestRepo.getShiftRequestById(id, currentUser.id);
 
     return {
       message: "Shift request approved successfully",
@@ -167,7 +177,7 @@ class ShiftRequestServices {
       throw new Error("Only admins can reject shift requests");
     }
 
-    const existing = await this.shiftRequestRepo.getShiftRequestById(id);
+    const existing = await this.shiftRequestRepo.getShiftRequestById(id, currentUser.id);
     if (!existing) {
       throw new Error("Shift request not found");
     }
@@ -183,7 +193,7 @@ class ShiftRequestServices {
       rejectionReason: body.rejectionReason ?? null,
     });
 
-    const enriched = await this.shiftRequestRepo.getShiftRequestById(id);
+    const enriched = await this.shiftRequestRepo.getShiftRequestById(id, currentUser.id);
 
     return {
       message: "Shift request rejected successfully",

@@ -1,6 +1,6 @@
 import { db } from "../db/connection.js";
-import { leave, users } from "../db/schema.js";
-import { eq } from "drizzle-orm";
+import { leave, leaveEncashmentRequest, users } from "../db/schema.js";
+import { and, eq, gte, sql } from "drizzle-orm";
 import LeaveManagementRepository from "../repository/leaveManagement.repo.js";
 import LeaveRepository from "../repository/leave.repo.js";
 
@@ -74,6 +74,80 @@ class LeaveManagementServices {
       return 0;
     }
     return (balance.paidLeave ?? 0) - (balance.paidLeaveTaken ?? 0);
+  }
+
+  private getLeaveBalanceBucket(type: { name: string; code: string }) {
+    const value = `${type.name} ${type.code}`.toLowerCase();
+    if (/(^|[^a-z])(sick|sl)([^a-z]|$)/.test(value)) {
+      return { key: "sick" as const, allocated: "sickLeave" as const, taken: "sickLeaveTaken" as const };
+    }
+    if (/(^|[^a-z])(casual|cl)([^a-z]|$)/.test(value)) {
+      return { key: "casual" as const, allocated: "casualLeave" as const, taken: "casualLeaveTaken" as const };
+    }
+    if (/(^|[^a-z])(paid|earned|annual|privilege|pl|el)([^a-z]|$)/.test(value)) {
+      return { key: "paid" as const, allocated: "paidLeave" as const, taken: "paidLeaveTaken" as const };
+    }
+    return null;
+  }
+
+  private async getEmployeeEncashmentContext(empId: number, currentUser: CurrentUser) {
+    const owner = await this.repo.getEmployeeOwner(empId);
+    if (!owner?.organizationId) throw new Error("Employee record or organization not found");
+    const isAdmin = currentUser.roleId === 0 || currentUser.roleId === 1;
+    if (isAdmin) {
+      if (owner.adminId !== currentUser.id) throw new Error("Employee does not belong to this admin");
+    } else if (currentUser.id !== empId) {
+      throw new Error("Employees can only manage their own encashment requests");
+    }
+    return { adminId: owner.adminId, orgId: owner.organizationId };
+  }
+
+  private async getServerDailyRate(empId: number) {
+    const salary = await this.repo.getActiveSalaryAssignment(empId);
+    const monthlyBase = Number(salary?.baseSalary ?? 0);
+    if (!Number.isFinite(monthlyBase) || monthlyBase <= 0) {
+      throw new Error("An active salary assignment with base salary is required for encashment");
+    }
+    return Number((monthlyBase / 30).toFixed(2));
+  }
+
+  async getEncashmentEligibility(currentUser: CurrentUser) {
+    const empId = currentUser.id;
+    const { adminId } = await this.getEmployeeEncashmentContext(empId, currentUser);
+    const [balance, types, dailyRate] = await Promise.all([
+      this.leaveRepo.getBalanceByEmpUserId(empId),
+      this.repo.getEncashableLeaveTypes(adminId),
+      this.getServerDailyRate(empId),
+    ]);
+    if (!balance) throw new Error("Employee does not have an allocated leave balance");
+
+    const seenBuckets = new Set<string>();
+    const eligibility = [];
+    for (const type of types) {
+      const bucket = this.getLeaveBalanceBucket(type);
+      if (!bucket || seenBuckets.has(bucket.key)) continue;
+      seenBuckets.add(bucket.key);
+      const unusedDays = Math.max(0, balance[bucket.allocated] - balance[bucket.taken]);
+      const pendingDays = await this.repo.getPendingEncashmentDays(adminId, empId, type.name);
+      const availableDays = Math.max(0, unusedDays - pendingDays);
+      eligibility.push({
+        leaveTypeId: type.id,
+        leaveTypeName: type.name,
+        code: type.code,
+        allocatedDays: balance[bucket.allocated],
+        usedDays: balance[bucket.taken],
+        unusedDays,
+        pendingEncashmentDays: pendingDays,
+        availableToEncash: availableDays,
+        dailyRate,
+        maximumAmount: Number((availableDays * dailyRate).toFixed(2)),
+      });
+    }
+    return {
+      success: true,
+      message: "Leave encashment eligibility fetched successfully",
+      data: { employeeId: empId, dailyRate, leaveTypes: eligibility },
+    };
   }
 
   private async validateEmployeeBelongsToOrg(orgId: number, empId: number, adminId?: number) {
@@ -991,11 +1065,19 @@ class LeaveManagementServices {
   }
 
   async getEncashmentRequests(
-    filters: { status?: string; search?: string },
+    filters: { status?: string; search?: string; empId?: number },
     currentUser: CurrentUser,
   ) {
-    this.assertAdmin(currentUser);
-    const adminId = this.getAdminScopeId(currentUser);
+    const isAdmin = currentUser.roleId === 0 || currentUser.roleId === 1;
+    let adminId: number;
+    if (isAdmin) {
+      adminId = this.getAdminScopeId(currentUser);
+      if (filters.empId) await this.validateEmployeeBelongsToOrg(this.getOrgId(currentUser), filters.empId, adminId);
+    } else {
+      const context = await this.getEmployeeEncashmentContext(currentUser.id, currentUser);
+      adminId = context.adminId;
+      filters.empId = currentUser.id;
+    }
     return {
       success: true,
       message: "Leave encashment requests fetched successfully",
@@ -1007,41 +1089,44 @@ class LeaveManagementServices {
     body: {
       empId?: number;
       leaveTypeId?: number | null;
+      leaveType?: string;
       leaveTypeName?: string;
       daysRequested?: number;
+      requestedDays?: number;
+      daysToEncash?: number;
       dailyRate?: number;
     },
     currentUser: CurrentUser,
   ) {
-    this.assertAdmin(currentUser);
-    const adminId = this.getAdminScopeId(currentUser);
-    const orgId = this.getOrgId(currentUser);
-    if (!body.empId || !body.leaveTypeName || body.daysRequested == null || body.dailyRate == null) {
-      throw new Error("empId, leaveTypeName, daysRequested, and dailyRate are required");
-    }
+    const empId = Number(body.empId ?? currentUser.id);
+    const { adminId, orgId } = await this.getEmployeeEncashmentContext(empId, currentUser);
+    const leaveTypeName = body.leaveTypeName ?? body.leaveType;
+    const leaveType = await this.repo.findEncashableLeaveType(adminId, body.leaveTypeId, leaveTypeName);
+    if (!leaveType) throw new Error("The selected leave type is not active, paid, and encashable");
+    const bucket = this.getLeaveBalanceBucket(leaveType);
+    if (!bucket) throw new Error("This leave type is not linked to an allocated leave balance");
 
-    await this.validateEmployeeBelongsToOrg(orgId, body.empId, adminId);
-
-    const daysRequested = Number(body.daysRequested);
-    const dailyRate = Number(body.dailyRate);
+    const daysRequested = Number(body.daysRequested ?? body.requestedDays ?? body.daysToEncash);
     this.ensurePositiveInteger(daysRequested, "daysRequested", false);
-    if (Number.isNaN(dailyRate) || dailyRate <= 0) {
-      throw new Error("dailyRate must be greater than 0");
-    }
-
-    const balance = await this.leaveRepo.getBalanceByEmpUserId(body.empId);
-    const daysAvailable = this.getRemainingPaidDays(balance);
+    const [balance, pendingDays, dailyRate] = await Promise.all([
+      this.leaveRepo.getBalanceByEmpUserId(empId),
+      this.repo.getPendingEncashmentDays(adminId, empId, leaveType.name),
+      this.getServerDailyRate(empId),
+    ]);
+    if (!balance) throw new Error("Employee does not have an allocated leave balance");
+    const unusedDays = Math.max(0, balance[bucket.allocated] - balance[bucket.taken]);
+    const daysAvailable = Math.max(0, unusedDays - pendingDays);
     if (daysRequested > daysAvailable) {
-      throw new Error(`Requested encashment exceeds available balance (${daysAvailable})`);
+      throw new Error(`Requested encashment exceeds unreserved unused balance (${daysAvailable})`);
     }
 
     const amount = Number((daysRequested * dailyRate).toFixed(2));
     const result = await this.repo.createEncashmentRequest({
       organizationId: orgId,
       adminId,
-      empId: body.empId,
-      leaveTypeId: body.leaveTypeId ?? null,
-      leaveTypeName: body.leaveTypeName.trim(),
+      empId,
+      leaveTypeId: leaveType.id,
+      leaveTypeName: leaveType.name,
       daysAvailable,
       daysRequested,
       dailyRate: String(dailyRate),
@@ -1055,6 +1140,43 @@ class LeaveManagementServices {
     };
   }
 
+  async createEncashAllRequest(currentUser: CurrentUser) {
+    const empId = currentUser.id;
+    const { adminId, orgId } = await this.getEmployeeEncashmentContext(empId, currentUser);
+    const [balance, types, dailyRate] = await Promise.all([
+      this.leaveRepo.getBalanceByEmpUserId(empId),
+      this.repo.getEncashableLeaveTypes(adminId),
+      this.getServerDailyRate(empId),
+    ]);
+    if (!balance) throw new Error("Employee does not have an allocated leave balance");
+
+    const requests: Array<typeof leaveEncashmentRequest.$inferInsert> = [];
+    const seenBuckets = new Set<string>();
+    for (const type of types) {
+      const bucket = this.getLeaveBalanceBucket(type);
+      if (!bucket || seenBuckets.has(bucket.key)) continue;
+      seenBuckets.add(bucket.key);
+      const unused = Math.max(0, balance[bucket.allocated] - balance[bucket.taken]);
+      const pending = await this.repo.getPendingEncashmentDays(adminId, empId, type.name);
+      const available = Math.max(0, unused - pending);
+      if (!available) continue;
+      requests.push({
+        organizationId: orgId,
+        adminId,
+        empId,
+        leaveTypeId: type.id,
+        leaveTypeName: type.name,
+        daysAvailable: available,
+        daysRequested: available,
+        dailyRate: String(dailyRate),
+        amount: String(Number((available * dailyRate).toFixed(2))),
+      });
+    }
+    if (!requests.length) throw new Error("No unused encashable leave is currently available");
+    const data = await this.repo.createEncashmentRequests(requests);
+    return { success: true, message: "All available leave submitted for encashment", data };
+  }
+
   async approveEncashmentRequest(id: number, currentUser: CurrentUser) {
     this.assertAdmin(currentUser);
     const adminId = this.getAdminScopeId(currentUser);
@@ -1066,28 +1188,47 @@ class LeaveManagementServices {
       throw new Error("Only submitted requests can be approved");
     }
 
+    const leaveType = await this.repo.findEncashableLeaveType(
+      adminId,
+      existing.leaveTypeId,
+      existing.leaveTypeName,
+    );
+    if (!leaveType) throw new Error("The request leave type is no longer encashable");
+    const bucket = this.getLeaveBalanceBucket(leaveType);
+    if (!bucket) throw new Error("This leave type is not linked to an allocated leave balance");
     const balance = await this.leaveRepo.getBalanceByEmpUserId(existing.empId);
     if (!balance) {
       throw new Error("Employee does not have a leave balance record");
     }
 
-    const remainingPaid = this.getRemainingPaidDays(balance);
-    if (existing.daysRequested > remainingPaid) {
-      throw new Error(`Encashment exceeds remaining paid leave (${remainingPaid})`);
+    const remaining = Math.max(0, balance[bucket.allocated] - balance[bucket.taken]);
+    if (existing.daysRequested > remaining) {
+      throw new Error(`Encashment exceeds remaining ${leaveType.name} balance (${remaining})`);
     }
 
-    await db.transaction(async () => {
-      await this.leaveRepo.updateLeave(balance.id, {
-        paidLeave: balance.paidLeave - existing.daysRequested,
-        total: balance.total - existing.daysRequested,
-      } as typeof leave.$inferInsert);
+    await db.transaction(async (tx) => {
+      const [claimed] = await tx
+        .update(leaveEncashmentRequest)
+        .set({ status: "approved", reviewedBy: currentUser.id, reviewedAt: new Date(), rejectionReason: null, updatedAt: new Date() })
+        .where(and(eq(leaveEncashmentRequest.id, id), eq(leaveEncashmentRequest.adminId, adminId), eq(leaveEncashmentRequest.status, "submitted")))
+        .returning({ id: leaveEncashmentRequest.id });
+      if (!claimed) throw new Error("Only submitted requests can be approved");
 
-      await this.repo.updateEncashmentRequest(id, {
-        status: "approved",
-        reviewedBy: currentUser.id,
-        reviewedAt: new Date(),
-        rejectionReason: null,
-      });
+      const [updatedBalance] = await tx
+        .update(leave)
+        .set({
+          [bucket.allocated]: sql`${leave[bucket.allocated]} - ${existing.daysRequested}`,
+          total: sql`${leave.total} - ${existing.daysRequested}`,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(leave.id, balance.id),
+            gte(sql`${leave[bucket.allocated]} - ${leave[bucket.taken]}`, existing.daysRequested),
+          ),
+        )
+        .returning({ id: leave.id });
+      if (!updatedBalance) throw new Error("Leave balance changed; refresh and review the request again");
     });
 
     return {
