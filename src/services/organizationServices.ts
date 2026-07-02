@@ -1,14 +1,21 @@
 import OrganizationRepository from "../repository/organization.repo.js";
+import { SubscriptionRepository } from "../repository/subscription.repo.js";
 
 class OrganizationServices {
   private orgRepo: OrganizationRepository;
+  private subscriptionRepo: SubscriptionRepository;
 
   constructor() {
     this.orgRepo = new OrganizationRepository();
+    this.subscriptionRepo = new SubscriptionRepository();
   }
 
   async getAllOrganizations(page: number = 1, limit: number = 10, search?: string) {
-    const { data, total } = await this.orgRepo.getAllOrganizations(page, limit, search);
+    const [{ data, total }, definitions] = await Promise.all([
+      this.orgRepo.getAllOrganizations(page, limit, search),
+      this.subscriptionRepo.getAllPlanDefinitionRecords(),
+    ]);
+    const planNames = new Map(definitions.map((definition) => [definition.planType, definition.name]));
 
     const formattedOrganizations = data.map(({ organization, userCount, plan }) => {
       const planActive = plan?.active ?? false;
@@ -26,18 +33,9 @@ class OrganizationServices {
       }
 
       // Format plan name
-      let planName = "No Plan";
-      if (plan?.planType === "free_trial") {
-        planName = "Free Trial";
-      } else if (plan?.planType === "starter_pack") {
-        planName = "Starter";
-      } else if (plan?.planType === "premium") {
-        planName = "Growth";
-      } else if (plan?.planType === "enterprise") {
-        planName = "Enterprise";
-      } else if (plan?.planType === "basic") {
-        planName = "Basic";
-      }
+      const planName = plan?.planType
+        ? (planNames.get(plan.planType) ?? plan.planType.replace(/_/g, " "))
+        : "No Plan";
 
       // Format domain
       let domain = "N/A";
@@ -73,16 +71,16 @@ class OrganizationServices {
   }
 
   async getSuperAdminDashboardOverview() {
-    const rawData = await this.orgRepo.getSuperAdminDashboardOverview();
+    const [rawData, definitions] = await Promise.all([
+      this.orgRepo.getSuperAdminDashboardOverview(),
+      this.subscriptionRepo.getAllPlanDefinitionRecords(),
+    ]);
+    const planNames = new Map(definitions.map((definition) => [definition.planType, definition.name]));
     
     // Helper to get formatted plan name
     const getPlanName = (planType?: string | null) => {
       if (!planType) return "No Plan";
-      if (planType === "free_trial") return "Free Trial";
-      if (planType === "starter_pack") return "Starter";
-      if (planType === "premium") return "Growth";
-      if (planType === "enterprise") return "Enterprise";
-      return planType.charAt(0).toUpperCase() + planType.slice(1);
+      return planNames.get(planType) ?? planType.replace(/_/g, " ");
     };
 
     // Helper to get relative time string

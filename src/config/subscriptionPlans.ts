@@ -1,8 +1,4 @@
-export type SubscriptionPlanType =
-  | "free_trial"
-  | "starter_pack"
-  | "premium"
-  | "enterprise";
+export type SubscriptionPlanType = string;
 
 export type SubscriptionAddonType = "extra_employee" | "custom_feature";
 
@@ -25,10 +21,7 @@ export interface SubscriptionAddonConfig {
   priceInr: number;
 }
 
-export const SUBSCRIPTION_PLANS: Record<
-  SubscriptionPlanType,
-  SubscriptionPlanConfig
-> = {
+export const SUBSCRIPTION_PLANS: Record<string, SubscriptionPlanConfig> = {
   free_trial: {
     planType: "free_trial",
     name: "Free Trial",

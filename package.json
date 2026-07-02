@@ -9,7 +9,7 @@
     "start": "node dist/server.js",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
-    "migrate": "drizzle-kit generate && tsx src/db/migrate.ts"
+    "migrate": "tsx src/db/migrate.ts"
   },
   "keywords": [],
   "author": "",

@@ -6,6 +6,7 @@ import {
   payroll,
   document,
   Plain,
+  subscriptionPlanDefinition,
   department,
   designation,
 } from "../db/schema.js";
@@ -309,6 +310,7 @@ class UserRepository {
           active: Plain.active,
           expired: Plain.expired,
           price: Plain.price,
+          name: subscriptionPlanDefinition.name,
         }
       })
       .from(users)
@@ -318,6 +320,10 @@ class UserRepository {
           eq(Plain.userId, users.id),
           eq(Plain.isDeleted, false)
         )
+      )
+      .leftJoin(
+        subscriptionPlanDefinition,
+        eq(subscriptionPlanDefinition.planType, Plain.planType),
       )
       .where(whereClause)
       .limit(limit)

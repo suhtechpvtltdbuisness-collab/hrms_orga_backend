@@ -1,8 +1,85 @@
 import { db } from "../db/connection.js";
-import { Plain, PlainPayment, Employee, users } from "../db/schema.js";
-import { and, eq, sql, ne } from "drizzle-orm";
+import { Plain, PlainPayment, Employee, subscriptionPlanDefinition, users } from "../db/schema.js";
+import { and, asc, eq, sql, ne } from "drizzle-orm";
 
 export class SubscriptionRepository {
+  async getPlanDefinitions(includeInactive = false) {
+    const conditions = [eq(subscriptionPlanDefinition.isDeleted, false)];
+    if (!includeInactive) conditions.push(eq(subscriptionPlanDefinition.active, true));
+    return db
+      .select()
+      .from(subscriptionPlanDefinition)
+      .where(and(...conditions))
+      .orderBy(asc(subscriptionPlanDefinition.sortOrder), asc(subscriptionPlanDefinition.id));
+  }
+
+  async getAllPlanDefinitionRecords() {
+    return db.select().from(subscriptionPlanDefinition).orderBy(asc(subscriptionPlanDefinition.sortOrder));
+  }
+
+  async getPlanDefinitionByType(planType: string, includeInactive = false) {
+    const conditions = [
+      eq(subscriptionPlanDefinition.planType, planType),
+      eq(subscriptionPlanDefinition.isDeleted, false),
+    ];
+    if (!includeInactive) conditions.push(eq(subscriptionPlanDefinition.active, true));
+    const [plan] = await db.select().from(subscriptionPlanDefinition).where(and(...conditions)).limit(1);
+    return plan ?? null;
+  }
+
+  async getAnyPlanDefinitionByType(planType: string) {
+    const [plan] = await db
+      .select()
+      .from(subscriptionPlanDefinition)
+      .where(eq(subscriptionPlanDefinition.planType, planType))
+      .limit(1);
+    return plan ?? null;
+  }
+
+  async createPlanDefinition(data: typeof subscriptionPlanDefinition.$inferInsert) {
+    const [plan] = await db.insert(subscriptionPlanDefinition).values(data).returning();
+    return plan;
+  }
+
+  async updatePlanDefinition(
+    id: number,
+    data: Partial<typeof subscriptionPlanDefinition.$inferInsert>,
+  ) {
+    const [plan] = await db
+      .update(subscriptionPlanDefinition)
+      .set({ ...data, updatedAt: new Date() })
+      .where(and(eq(subscriptionPlanDefinition.id, id), eq(subscriptionPlanDefinition.isDeleted, false)))
+      .returning();
+    return plan ?? null;
+  }
+
+  async deletePlanDefinition(id: number) {
+    const [plan] = await db
+      .update(subscriptionPlanDefinition)
+      .set({ active: false, isDeleted: true, updatedAt: new Date() })
+      .where(and(eq(subscriptionPlanDefinition.id, id), eq(subscriptionPlanDefinition.isDeleted, false)))
+      .returning();
+    return plan ?? null;
+  }
+
+  async countSubscriptionsByPlanType(planType: string) {
+    const [result] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(Plain)
+      .where(and(eq(Plain.planType, planType), eq(Plain.isDeleted, false)));
+    return result?.count ?? 0;
+  }
+
+  async adjustSubscriptionEmployeeLimits(planType: string, delta: number) {
+    if (!delta) return;
+    await db
+      .update(Plain)
+      .set({
+        maxEmployees: sql`greatest(1, ${Plain.maxEmployees} + ${delta})`,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(Plain.planType, planType), eq(Plain.isDeleted, false)));
+  }
   async getActivePlanByUserId(userId: number) {
     const [plan] = await db
       .select()

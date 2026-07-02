@@ -9,12 +9,20 @@ import {
   createAddonOrder,
   verifyAddonPayment,
   getAllSubscriptions,
+  getManagedPlans,
+  createManagedPlan,
+  updateManagedPlan,
+  deleteManagedPlan,
 } from "../controllers/subscriptionController.js";
 import { authenticate, authorizeSuperAdmin } from "../middleware/auth.js";
 
 const subscriptionRouter = Router();
 
 subscriptionRouter.get("/plans", getPlans);
+subscriptionRouter.get("/plans/manage", authenticate, authorizeSuperAdmin, getManagedPlans);
+subscriptionRouter.post("/plans/manage", authenticate, authorizeSuperAdmin, createManagedPlan);
+subscriptionRouter.put("/plans/manage/:id", authenticate, authorizeSuperAdmin, updateManagedPlan);
+subscriptionRouter.delete("/plans/manage/:id", authenticate, authorizeSuperAdmin, deleteManagedPlan);
 
 subscriptionRouter.get("/current", authenticate, getCurrentSubscription);
 subscriptionRouter.get("/all", authenticate, authorizeSuperAdmin, getAllSubscriptions);

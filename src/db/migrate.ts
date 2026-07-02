@@ -14,6 +14,7 @@ if (!process.env.DATABASE_URL) {
 
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
+  connectionTimeoutMillis: 15_000,
   ssl: {
     rejectUnauthorized: false,
   },

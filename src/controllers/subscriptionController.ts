@@ -17,6 +17,53 @@ export const getPlans = async (_req: Request, res: Response): Promise<void> => {
   }
 };
 
+export const getManagedPlans = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    res.status(200).json({ success: true, data: await subscriptionService.getManagedPlans() });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error instanceof Error ? error.message : "Failed to fetch managed plans",
+    });
+  }
+};
+
+export const createManagedPlan = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const plan = await subscriptionService.createManagedPlan(req.body, res.locals.user.id);
+    res.status(201).json({ success: true, message: "Plan created successfully", data: plan });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error instanceof Error ? error.message : "Failed to create plan",
+    });
+  }
+};
+
+export const updateManagedPlan = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const plan = await subscriptionService.updateManagedPlan(Number(req.params.id), req.body);
+    res.status(200).json({ success: true, message: "Plan updated successfully", data: plan });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error instanceof Error ? error.message : "Failed to update plan",
+    });
+  }
+};
+
+export const deleteManagedPlan = async (req: Request, res: Response): Promise<void> => {
+  try {
+    await subscriptionService.deleteManagedPlan(Number(req.params.id));
+    res.status(200).json({ success: true, message: "Plan deleted successfully" });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error instanceof Error ? error.message : "Failed to delete plan",
+    });
+  }
+};
+
 export const getCurrentSubscription = async (
   req: Request,
   res: Response,

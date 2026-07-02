@@ -4,6 +4,7 @@ import {
   getAddonConfig,
   getPlanConfig,
   SubscriptionAddonType,
+  SubscriptionPlanConfig,
   SubscriptionPlanType,
 } from "../config/subscriptionPlans.js";
 import { SubscriptionRepository } from "../repository/subscription.repo.js";
@@ -15,6 +16,21 @@ import {
   verifyRazorpayWebhookSignature,
 } from "../utils/razorpay.js";
 import { Plain } from "../db/schema.js";
+
+type ManagedPlanInput = {
+  planType?: unknown;
+  name?: unknown;
+  description?: unknown;
+  priceInr?: unknown;
+  pricePerEmployeeInr?: unknown;
+  durationDays?: unknown;
+  maxEmployees?: unknown;
+  module?: unknown;
+  organizationType?: unknown;
+  features?: unknown;
+  active?: unknown;
+  sortOrder?: unknown;
+};
 
 export class SubscriptionService {
   private repo: SubscriptionRepository;
@@ -29,12 +45,35 @@ export class SubscriptionService {
     return new Date(plan.expired) > new Date();
   }
 
-  private getBasePlanMaxEmployees(plan: typeof Plain.$inferSelect | null) {
+  private async getRuntimePlanConfig(
+    planType: string,
+  ): Promise<(SubscriptionPlanConfig & { features: string[] }) | null> {
+    const managed = await this.repo.getAnyPlanDefinitionByType(planType);
+    if (managed) {
+      if (managed.isDeleted || !managed.active) return null;
+      return {
+        planType: managed.planType,
+        name: managed.name,
+        description: managed.description,
+        priceInr: managed.priceInr,
+        pricePerEmployeeInr: managed.pricePerEmployeeInr,
+        durationDays: managed.durationDays,
+        maxEmployees: managed.maxEmployees,
+        module: "hrms",
+        organizationType: managed.organizationType as "startup" | "sme" | "enterprise",
+        features: managed.features,
+      };
+    }
+    const fallback = getPlanConfig(planType);
+    return fallback ? { ...fallback, features: [] } : null;
+  }
+
+  private async getBasePlanMaxEmployees(plan: typeof Plain.$inferSelect | null) {
     if (!plan) {
       return 0;
     }
 
-    const config = getPlanConfig(plan.planType);
+    const config = await this.getRuntimePlanConfig(plan.planType);
     return config?.maxEmployees ?? plan.maxEmployees ?? 0;
   }
 
@@ -42,7 +81,8 @@ export class SubscriptionService {
     const employeeCount = await this.repo.countEmployeesByAdminId(userId);
     const active = this.isPlanActive(plan);
     const maxEmployees = plan?.maxEmployees ?? 0;
-    const includedEmployees = this.getBasePlanMaxEmployees(plan);
+    const config = plan ? await this.getRuntimePlanConfig(plan.planType) : null;
+    const includedEmployees = await this.getBasePlanMaxEmployees(plan);
     const extraEmployeesPurchased = Math.max(maxEmployees - includedEmployees, 0);
 
     return {
@@ -50,7 +90,9 @@ export class SubscriptionService {
       employeeCount,
       includedEmployees,
       extraEmployeesPurchased,
-      extraEmployeePriceInr: SUBSCRIPTION_ADDONS.extra_employee.priceInr,
+      extraEmployeePriceInr:
+        config?.pricePerEmployeeInr ?? SUBSCRIPTION_ADDONS.extra_employee.priceInr,
+      features: config?.features ?? [],
       maxEmployees,
       seatsRemaining: Math.max(maxEmployees - employeeCount, 0),
       hasActivePlan: active,
@@ -61,7 +103,8 @@ export class SubscriptionService {
   }
 
   async getPlans() {
-    return Object.values(SUBSCRIPTION_PLANS).map((plan) => ({
+    const managedPlans = await this.repo.getPlanDefinitions();
+    return managedPlans.map((plan) => ({
       planType: plan.planType,
       name: plan.name,
       description: plan.description,
@@ -70,6 +113,9 @@ export class SubscriptionService {
       durationDays: plan.durationDays,
       maxEmployees: plan.maxEmployees,
       module: plan.module,
+      organizationType: plan.organizationType,
+      features: "features" in plan ? plan.features : [],
+      active: "active" in plan ? plan.active : true,
       extraEmployeePriceInr: SUBSCRIPTION_ADDONS.extra_employee.priceInr,
       customFeaturePriceInr: SUBSCRIPTION_ADDONS.custom_feature.priceInr,
       billingModel:
@@ -77,6 +123,108 @@ export class SubscriptionService {
           ? `flat_${plan.priceInr}_inr_up_to_${plan.maxEmployees}_employees`
           : "trial",
     }));
+  }
+
+  async getManagedPlans() {
+    const plans = await this.repo.getPlanDefinitions(true);
+    return Promise.all(
+      plans.map(async (plan) => ({
+        ...plan,
+        subscriptionCount: await this.repo.countSubscriptionsByPlanType(plan.planType),
+      })),
+    );
+  }
+
+  private normalizeManagedPlan(input: ManagedPlanInput, partial = false) {
+    const result: Record<string, unknown> = {};
+    const requireText = (key: keyof ManagedPlanInput, label: string) => {
+      if (input[key] === undefined && partial) return;
+      if (typeof input[key] !== "string" || !input[key]!.toString().trim()) {
+        throw new Error(`${label} is required`);
+      }
+      result[key] = input[key]!.toString().trim();
+    };
+    const requireNumber = (key: keyof ManagedPlanInput, label: string, minimum: number) => {
+      if (input[key] === undefined && partial) return;
+      const value = Number(input[key]);
+      if (!Number.isInteger(value) || value < minimum) {
+        throw new Error(`${label} must be an integer of at least ${minimum}`);
+      }
+      result[key] = value;
+    };
+
+    requireText("name", "Plan name");
+    requireText("description", "Description");
+    requireNumber("priceInr", "Price", 0);
+    requireNumber("pricePerEmployeeInr", "Per-employee price", 0);
+    requireNumber("durationDays", "Duration", 1);
+    requireNumber("maxEmployees", "Employee limit", 1);
+    requireNumber("sortOrder", "Sort order", 0);
+
+    if (!partial || input.planType !== undefined) {
+      const planType = String(input.planType ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+      if (!planType) throw new Error("Plan key is required");
+      result.planType = planType;
+    }
+    if (!partial || input.module !== undefined) result.module = String(input.module || "hrms").trim();
+    if (!partial || input.organizationType !== undefined) {
+      const organizationType = String(input.organizationType || "sme");
+      if (!["startup", "sme", "enterprise"].includes(organizationType)) {
+        throw new Error("Organization type must be startup, sme, or enterprise");
+      }
+      result.organizationType = organizationType;
+    }
+    if (!partial || input.features !== undefined) {
+      if (!Array.isArray(input.features)) throw new Error("Features must be an array");
+      result.features = [...new Set(input.features.map((item) => String(item).trim()).filter(Boolean))];
+    }
+    if (!partial || input.active !== undefined) result.active = input.active !== false;
+    return result;
+  }
+
+  async createManagedPlan(input: ManagedPlanInput, superAdminId: number) {
+    const data = this.normalizeManagedPlan(input);
+    if (await this.repo.getAnyPlanDefinitionByType(String(data.planType))) {
+      throw new Error("A plan with this key already exists");
+    }
+    return this.repo.createPlanDefinition({
+      ...(data as any),
+      createdBy: superAdminId,
+      isDeleted: false,
+    });
+  }
+
+  async updateManagedPlan(id: number, input: ManagedPlanInput) {
+    if (!Number.isInteger(id) || id <= 0) throw new Error("Invalid plan ID");
+    const existingPlans = await this.repo.getPlanDefinitions(true);
+    const existing = existingPlans.find((plan) => plan.id === id);
+    if (!existing) throw new Error("Plan not found");
+    const data = this.normalizeManagedPlan(input, true);
+    if (data.planType) {
+      if (data.planType !== existing.planType) {
+        throw new Error("Plan key cannot be changed after creation");
+      }
+      delete data.planType;
+    }
+    if (data.priceInr !== undefined || data.name !== undefined || data.description !== undefined) {
+      data.razorpayPlanId = null;
+    }
+    const plan = await this.repo.updatePlanDefinition(id, data as any);
+    if (!plan) throw new Error("Plan not found");
+    if (data.maxEmployees !== undefined) {
+      await this.repo.adjustSubscriptionEmployeeLimits(
+        existing.planType,
+        Number(data.maxEmployees) - existing.maxEmployees,
+      );
+    }
+    return plan;
+  }
+
+  async deleteManagedPlan(id: number) {
+    if (!Number.isInteger(id) || id <= 0) throw new Error("Invalid plan ID");
+    const plan = await this.repo.deletePlanDefinition(id);
+    if (!plan) throw new Error("Plan not found");
+    return plan;
   }
 
   async resolveSubscriptionOwner(userId: number) {
@@ -152,7 +300,7 @@ export class SubscriptionService {
 
     if (employeeCount >= (plan?.maxEmployees ?? 0)) {
       const error = new Error(
-        `You have reached your plan limit. You can only have ${plan?.maxEmployees} users. If you want to add more users you have to pay ₹${SUBSCRIPTION_ADDONS.extra_employee.priceInr} per person.`,
+        `You have reached your plan limit. You can only have ${plan?.maxEmployees} users. If you want to add more users you have to purchase an additional seat.`,
       ) as Error & {
         statusCode?: number;
         code?: string;
@@ -163,18 +311,25 @@ export class SubscriptionService {
       error.details = {
         employeeCount,
         maxEmployees: plan?.maxEmployees ?? 0,
-        extraEmployeePriceInr: SUBSCRIPTION_ADDONS.extra_employee.priceInr,
+        extraEmployeePriceInr:
+          (await this.getRuntimePlanConfig(plan!.planType))?.pricePerEmployeeInr ??
+          SUBSCRIPTION_ADDONS.extra_employee.priceInr,
       };
       throw error;
     }
   }
 
   async getOrCreateRazorpayStarterPlan(): Promise<string> {
-    if (process.env.RAZORPAY_STARTER_PLAN_ID) {
+    const managedStarter = await this.repo.getAnyPlanDefinitionByType("starter_pack");
+    if (managedStarter?.razorpayPlanId && managedStarter.active && !managedStarter.isDeleted) {
+      return managedStarter.razorpayPlanId;
+    }
+    if (!managedStarter && process.env.RAZORPAY_STARTER_PLAN_ID) {
       return process.env.RAZORPAY_STARTER_PLAN_ID;
     }
 
-    const starterConfig = SUBSCRIPTION_PLANS.starter_pack;
+    const starterConfig = await this.getRuntimePlanConfig("starter_pack");
+    if (!starterConfig) throw new Error("Starter plan is not available");
     const razorpay = getRazorpayInstance();
 
     const plan = await razorpay.plans.create({
@@ -188,6 +343,10 @@ export class SubscriptionService {
       },
     });
 
+    if (managedStarter) {
+      await this.repo.updatePlanDefinition(managedStarter.id, { razorpayPlanId: plan.id });
+    }
+
     return plan.id;
   }
 
@@ -196,7 +355,8 @@ export class SubscriptionService {
     razorpaySubscriptionId: string,
     razorpayPlanId: string,
   ) {
-    const trialConfig = SUBSCRIPTION_PLANS.free_trial;
+    const trialConfig = await this.getRuntimePlanConfig("free_trial");
+    if (!trialConfig) throw new Error("Free trial plan is not available");
     const expiry = new Date();
     expiry.setDate(expiry.getDate() + trialConfig.durationDays);
 
@@ -235,7 +395,8 @@ export class SubscriptionService {
     razorpaySubscriptionId: string,
     paymentId?: string,
   ) {
-    const starterConfig = SUBSCRIPTION_PLANS.starter_pack;
+    const starterConfig = await this.getRuntimePlanConfig("starter_pack");
+    if (!starterConfig) throw new Error("Starter plan is not available");
     const expiry = new Date();
     expiry.setDate(expiry.getDate() + starterConfig.durationDays);
 
@@ -284,8 +445,9 @@ export class SubscriptionService {
       throw new Error("You already have an active subscription");
     }
 
-    const trialConfig = SUBSCRIPTION_PLANS.free_trial;
-    const starterConfig = SUBSCRIPTION_PLANS.starter_pack;
+    const trialConfig = await this.getRuntimePlanConfig("free_trial");
+    const starterConfig = await this.getRuntimePlanConfig("starter_pack");
+    if (!trialConfig || !starterConfig) throw new Error("Trial or starter plan is not available");
     const razorpay = getRazorpayInstance();
     const planId = await this.getOrCreateRazorpayStarterPlan();
 
@@ -398,7 +560,7 @@ export class SubscriptionService {
   }
 
   async createPaymentOrder(userId: number, planType: SubscriptionPlanType) {
-    const config = getPlanConfig(planType);
+    const config = await this.getRuntimePlanConfig(planType);
 
     if (!config) {
       throw new Error("Invalid subscription plan");
@@ -451,7 +613,11 @@ export class SubscriptionService {
 
     const normalizedQuantity =
       itemType === "extra_employee" ? Math.max(1, Math.floor(quantity || 1)) : 1;
-    const amountInPaise = config.priceInr * normalizedQuantity * 100;
+    const planConfig = await this.getRuntimePlanConfig(activePlan!.planType);
+    const unitPriceInr = itemType === "extra_employee"
+      ? (planConfig?.pricePerEmployeeInr ?? config.priceInr)
+      : config.priceInr;
+    const amountInPaise = unitPriceInr * normalizedQuantity * 100;
     const razorpay = getRazorpayInstance();
 
     const order = await razorpay.orders.create({
@@ -473,7 +639,7 @@ export class SubscriptionService {
       itemType,
       quantity: normalizedQuantity,
       planName: config.name,
-      unitPriceInr: config.priceInr,
+      unitPriceInr,
     };
   }
 
@@ -484,7 +650,7 @@ export class SubscriptionService {
     razorpayPaymentId: string,
     razorpaySignature: string,
   ) {
-    const config = getPlanConfig(planType);
+    const config = await this.getRuntimePlanConfig(planType);
 
     if (!config) {
       throw new Error("Invalid subscription plan");
@@ -578,6 +744,10 @@ export class SubscriptionService {
 
     const normalizedQuantity =
       itemType === "extra_employee" ? Math.max(1, Math.floor(quantity || 1)) : 1;
+    const planConfig = await this.getRuntimePlanConfig(activePlan.planType);
+    const unitPriceInr = itemType === "extra_employee"
+      ? (planConfig?.pricePerEmployeeInr ?? config.priceInr)
+      : config.priceInr;
 
     let updatedPlan = activePlan;
     if (itemType === "extra_employee") {
@@ -591,7 +761,7 @@ export class SubscriptionService {
       status: "paid",
       transactionId: `${itemType}:${razorpayOrderId}`,
       paymentMode: "online",
-      totalAmount: String(config.priceInr * normalizedQuantity),
+      totalAmount: String(unitPriceInr * normalizedQuantity),
       paymentId: razorpayPaymentId,
     });
 
@@ -609,7 +779,11 @@ export class SubscriptionService {
   }
 
   async getAllSubscriptions(page: number = 1, limit: number = 10, search?: string) {
-    const { data: rawPlans, total } = await this.repo.getAllSubscriptionsWithUsers(page, limit, search);
+    const [{ data: rawPlans, total }, definitions] = await Promise.all([
+      this.repo.getAllSubscriptionsWithUsers(page, limit, search),
+      this.repo.getAllPlanDefinitionRecords(),
+    ]);
+    const planNames = new Map(definitions.map((definition) => [definition.planType, definition.name]));
     
     const formattedData = rawPlans.map(({ plan, user }) => {
       const active = plan.active;
@@ -634,14 +808,7 @@ export class SubscriptionService {
       }
 
       // Format plan name
-      let planName = "Free Trial";
-      if (plan.planType === "starter_pack") {
-        planName = "Starter";
-      } else if (plan.planType === "premium") {
-        planName = "Growth";
-      } else if (plan.planType === "enterprise") {
-        planName = "Enterprise";
-      }
+      const planName = planNames.get(plan.planType) ?? plan.planType.replace(/_/g, " ");
 
       // Billing frequency
       const billing = plan.planType === "free_trial" ? "Trial" : "Monthly";
