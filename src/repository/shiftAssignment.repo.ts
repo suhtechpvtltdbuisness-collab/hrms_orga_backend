@@ -73,6 +73,38 @@ export class ShiftAssignmentRepository {
     return employee;
   }
 
+  async getEmployeeAssignmentsForDates(empId: number, rosterDates: string[]) {
+    if (!rosterDates.length) return [];
+
+    return db
+      .select({
+        assignmentId: shiftAssignment.id,
+        rosterDate: shiftAssignment.rosterDate,
+        shiftTypeId: shiftType.id,
+        shiftName: shiftType.name,
+        startTime: shiftType.startTime,
+        endTime: shiftType.endTime,
+        beginCheckinBefore: shiftType.beginCheckinBefore,
+        enableEntryGracePeriod: shiftType.enableEntryGracePeriod,
+        lateEntryGracePeriod: shiftType.lateEntryGracePeriod,
+      })
+      .from(shiftAssignment)
+      .innerJoin(
+        shiftType,
+        and(
+          eq(shiftType.id, shiftAssignment.shiftTypeId),
+          eq(shiftType.isDeleted, false),
+        ),
+      )
+      .where(
+        and(
+          eq(shiftAssignment.empId, empId),
+          inArray(shiftAssignment.rosterDate, rosterDates),
+        ),
+      )
+      .orderBy(desc(shiftAssignment.rosterDate));
+  }
+
   async getShiftTypes(adminId: number, shiftTypeIds: number[]) {
     if (!shiftTypeIds.length) return [];
     return db

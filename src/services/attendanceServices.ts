@@ -5,6 +5,7 @@ import {
 import { attendance, users, Employee } from "../db/schema.js";
 import { db } from "../db/connection.js";
 import { eq } from "drizzle-orm";
+import { ShiftAssignmentRepository } from "../repository/shiftAssignment.repo.js";
 
 type AttendanceStatus = typeof attendance.$inferSelect.status;
 type LeaveType = NonNullable<typeof attendance.$inferSelect.leaveType>;
@@ -59,9 +60,57 @@ function getDaysInMonth(month: string): string[] {
 }
 
 function getTodayDateString(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
 }
+
+function addDays(date: string, days: number): string {
+  const parsed = new Date(`${date}T00:00:00Z`);
+  parsed.setUTCDate(parsed.getUTCDate() + days);
+  return parsed.toISOString().slice(0, 10);
+}
+
+function parseShiftTime(value: string): { hours: number; minutes: number; seconds: number } {
+  const raw = value.trim();
+  const meridian = raw.match(/\b(AM|PM)\b/i)?.[1]?.toUpperCase();
+  const parts = raw.replace(/\b(AM|PM)\b/i, "").trim().split(":").map(Number);
+  let [hours, minutes = 0, seconds = 0] = parts;
+
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes) || !Number.isInteger(seconds)) {
+    throw new Error("The assigned shift has an invalid time configuration");
+  }
+  if (meridian === "PM" && hours < 12) hours += 12;
+  if (meridian === "AM" && hours === 12) hours = 0;
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59 || seconds < 0 || seconds > 59) {
+    throw new Error("The assigned shift has an invalid time configuration");
+  }
+
+  return { hours, minutes, seconds };
+}
+
+function shiftDateTime(rosterDate: string, value: string): Date {
+  const { hours, minutes, seconds } = parseShiftTime(value);
+  return new Date(
+    `${rosterDate}T${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}+05:30`,
+  );
+}
+
+type AssignedShift = Awaited<
+  ReturnType<ShiftAssignmentRepository["getEmployeeAssignmentsForDates"]>
+>[number];
+
+type ShiftWindow = {
+  assignment: AssignedShift;
+  attendanceDate: string;
+  shiftStart: Date;
+  shiftEnd: Date;
+  checkInAllowedAt: Date;
+  lateAfter: Date;
+};
 
 function validateStatus(status: string): AttendanceStatus {
   if (!VALID_STATUSES.includes(status as AttendanceStatus)) {
@@ -174,9 +223,49 @@ async function validateEmployee(empId: number) {
 
 export class AttendanceService {
   private attendanceRepo: AttendanceRepository;
+  private shiftAssignmentRepo: ShiftAssignmentRepository;
 
   constructor() {
     this.attendanceRepo = new AttendanceRepository();
+    this.shiftAssignmentRepo = new ShiftAssignmentRepository();
+  }
+
+  private async getAssignedShiftWindow(empId: number, now = new Date()): Promise<ShiftWindow | null> {
+    const today = getTodayDateString();
+    const yesterday = addDays(today, -1);
+    const assignments = await this.shiftAssignmentRepo.getEmployeeAssignmentsForDates(
+      empId,
+      [yesterday, today],
+    );
+
+    const windows = assignments.map((assignment) => {
+      const shiftStart = shiftDateTime(assignment.rosterDate, assignment.startTime);
+      const shiftEnd = shiftDateTime(assignment.rosterDate, assignment.endTime);
+      if (shiftEnd <= shiftStart) shiftEnd.setDate(shiftEnd.getDate() + 1);
+
+      const earlyMinutes = Math.max(0, assignment.beginCheckinBefore ?? 0);
+      const checkInAllowedAt = new Date(shiftStart.getTime() - earlyMinutes * 60_000);
+      const graceMinutes = assignment.enableEntryGracePeriod
+        ? Math.max(0, assignment.lateEntryGracePeriod ?? 0)
+        : 0;
+      const lateAfter = new Date(shiftStart.getTime() + graceMinutes * 60_000);
+
+      return {
+        assignment,
+        attendanceDate: assignment.rosterDate,
+        shiftStart,
+        shiftEnd,
+        checkInAllowedAt,
+        lateAfter,
+      };
+    });
+
+    const activeWindow = windows.find(
+      (window) => now >= window.checkInAllowedAt && now <= window.shiftEnd,
+    );
+    if (activeWindow) return activeWindow;
+
+    return windows.find((window) => window.attendanceDate === today) ?? null;
   }
 
   private adjustAttendanceStatus(record: any): any {
@@ -479,17 +568,32 @@ export class AttendanceService {
   }
 
   async checkInSelf(currentUser: typeof users.$inferSelect) {
-    const today = getTodayDateString();
     await validateEmployee(currentUser.id);
 
     const now = new Date();
-    const tenAM = new Date(now);
-    tenAM.setHours(10, 0, 0, 0);
-    const lateEntry = now.getTime() > tenAM.getTime();
+    const shiftWindow = await this.getAssignedShiftWindow(currentUser.id, now);
+    if (!shiftWindow) {
+      throw new Error("You cannot check in because no shift is assigned to you today");
+    }
+    if (now < shiftWindow.checkInAllowedAt) {
+      throw new Error(
+        `Check-in opens at ${shiftWindow.checkInAllowedAt.toLocaleTimeString("en-IN", {
+          timeZone: "Asia/Kolkata",
+          hour: "2-digit",
+          minute: "2-digit",
+        })}`,
+      );
+    }
+    if (now > shiftWindow.shiftEnd) {
+      throw new Error("The check-in window for your assigned shift has closed");
+    }
+
+    const attendanceDate = shiftWindow.attendanceDate;
+    const lateEntry = now > shiftWindow.lateAfter;
 
     const existing = await this.attendanceRepo.getAttendanceByEmpAndDate(
       currentUser.id,
-      today,
+      attendanceDate,
     );
 
     if (existing.length > 0) {
@@ -502,6 +606,7 @@ export class AttendanceService {
         lateEntry,
         status: "present",
         period: "less_than_half_day",
+        shift: shiftWindow.assignment.shiftName,
         markedBy: currentUser.id,
       });
       const enriched = await this.attendanceRepo.getAttendanceById(updated[0].id);
@@ -512,11 +617,11 @@ export class AttendanceService {
     const created = await this.attendanceRepo.createAttendance({
       series,
       empId: currentUser.id,
-      attendanceDate: today,
+      attendanceDate,
       status: "present",
       period: "less_than_half_day",
       leaveType: null,
-      shift: null,
+      shift: shiftWindow.assignment.shiftName,
       lateEntry,
       earlyExit: false,
       markedBy: currentUser.id,
@@ -530,12 +635,14 @@ export class AttendanceService {
   }
 
   async checkOutSelf(currentUser: typeof users.$inferSelect) {
-    const today = getTodayDateString();
     await validateEmployee(currentUser.id);
+
+    const shiftWindow = await this.getAssignedShiftWindow(currentUser.id);
+    const attendanceDate = shiftWindow?.attendanceDate ?? getTodayDateString();
 
     const existing = await this.attendanceRepo.getAttendanceByEmpAndDate(
       currentUser.id,
-      today,
+      attendanceDate,
     );
 
     if (existing.length === 0 || !existing[0].checkIn) {
@@ -664,13 +771,41 @@ export class AttendanceService {
   }
 
   async getTodayStatus(currentUser: typeof users.$inferSelect) {
-    const today = getTodayDateString();
     await validateEmployee(currentUser.id);
+
+    const now = new Date();
+    const shiftWindow = await this.getAssignedShiftWindow(currentUser.id, now);
+    const attendanceDate = shiftWindow?.attendanceDate ?? getTodayDateString();
 
     const existing = await this.attendanceRepo.getAttendanceByEmpAndDate(
       currentUser.id,
-      today,
+      attendanceDate,
     );
+
+    const shift = shiftWindow
+      ? {
+          assignmentId: shiftWindow.assignment.assignmentId,
+          id: shiftWindow.assignment.shiftTypeId,
+          name: shiftWindow.assignment.shiftName,
+          startTime: shiftWindow.assignment.startTime,
+          endTime: shiftWindow.assignment.endTime,
+          beginCheckinBefore: shiftWindow.assignment.beginCheckinBefore,
+          enableEntryGracePeriod: shiftWindow.assignment.enableEntryGracePeriod,
+          lateEntryGracePeriod: shiftWindow.assignment.lateEntryGracePeriod,
+          rosterDate: shiftWindow.assignment.rosterDate,
+        }
+      : null;
+    const canCheckIn = Boolean(
+      shiftWindow &&
+      now >= shiftWindow.checkInAllowedAt &&
+      now <= shiftWindow.shiftEnd &&
+      !existing[0]?.checkIn,
+    );
+    const permissions = {
+      canCheckIn,
+      checkInAllowedAt: shiftWindow?.checkInAllowedAt.toISOString() ?? null,
+      shiftEndsAt: shiftWindow?.shiftEnd.toISOString() ?? null,
+    };
 
     if (existing.length > 0) {
       const record = this.adjustAttendanceStatus(existing[0]);
@@ -682,6 +817,8 @@ export class AttendanceService {
         status: record.status,
         period: record.period,
         lateEntry: record.lateEntry,
+        shift,
+        permissions,
         record,
       };
     }
@@ -694,6 +831,15 @@ export class AttendanceService {
       status: null,
       period: null,
       lateEntry: false,
+      shift,
+      permissions,
+      blockReason: !shiftWindow
+        ? "No shift is assigned for today"
+        : now < shiftWindow.checkInAllowedAt
+          ? "Check-in is not open yet"
+          : now > shiftWindow.shiftEnd
+            ? "The assigned shift has ended"
+            : null,
       record: null,
     };
   }

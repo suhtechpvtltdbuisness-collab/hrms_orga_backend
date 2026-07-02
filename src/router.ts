@@ -22,6 +22,7 @@ import uploadRouter from "./router/uploadRouter.js";
 import onboardingRouter from "./router/onboardingRouter.js";
 import organizationRouter from "./router/organizationRouter.js";
 import hiringRouter from "./router/hiringRouter.js";
+import dashboardRouter from "./router/dashboardRouter.js";
 
 const router = Router();
 
@@ -55,5 +56,6 @@ router.use("/upload", uploadRouter);
 router.use("/api/onboarding", onboardingRouter);
 router.use("/organizations", organizationRouter);
 router.use("/hiring", hiringRouter);
+router.use("/dashboard", dashboardRouter);
 
 export default router;
