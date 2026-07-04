@@ -148,6 +148,27 @@
       "when": 1783000000002,
       "tag": "0020_subscription_plan_definitions",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1783162651256,
+      "tag": "0021_gifted_wonder_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1783163604367,
+      "tag": "0022_replace_aws_with_opencv_embeddings",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1783163614092,
+      "tag": "0023_melodic_the_executioner",
+      "breakpoints": true
     }
   ]
 }

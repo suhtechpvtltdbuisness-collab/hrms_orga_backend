@@ -23,6 +23,7 @@ import onboardingRouter from "./router/onboardingRouter.js";
 import organizationRouter from "./router/organizationRouter.js";
 import hiringRouter from "./router/hiringRouter.js";
 import dashboardRouter from "./router/dashboardRouter.js";
+import faceBiometricRouter from "./router/faceBiometricRouter.js";
 
 const router = Router();
 
@@ -57,5 +58,6 @@ router.use("/api/onboarding", onboardingRouter);
 router.use("/organizations", organizationRouter);
 router.use("/hiring", hiringRouter);
 router.use("/dashboard", dashboardRouter);
+router.use("/employee/face", faceBiometricRouter);
 
 export default router;

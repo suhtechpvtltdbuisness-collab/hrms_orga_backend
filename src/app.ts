@@ -42,7 +42,9 @@ app.post(
   handleRazorpayWebhook,
 );
 
-app.use(express.json());
+// Camera captures are base64 encoded by the current web client. Keep this limit
+// narrow and enforce the decoded 5 MB limit again in the biometric service.
+app.use(express.json({ limit: "7mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use("/uploads", express.static("uploads"));
 app.use(router);

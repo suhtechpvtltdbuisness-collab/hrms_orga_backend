@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: orga-opencv-face-service
+    runtime: docker
+    dockerfilePath: ./face_service/Dockerfile
+    dockerContext: ./face_service
+    healthCheckPath: /health
+    envVars:
+      - key: FACE_RECOGNITION_SERVICE_KEY
+        generateValue: true

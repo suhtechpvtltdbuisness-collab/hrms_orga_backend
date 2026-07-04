@@ -212,6 +212,19 @@ export const Employee = pgTable("employee", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// Stores only the OpenCV SFace embedding. Captured images are not persisted.
+export const employeeFaceBiometric = pgTable("employee_face_biometric", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id")
+    .notNull()
+    .unique()
+    .references(() => users.id, { onDelete: "cascade" }),
+  embedding: jsonb("embedding").$type<number[]>().notNull(),
+  provider: varchar("provider", { length: 40 }).default("opencv_sface").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Employment Table
 export const employment = pgTable("employment", {
   id: serial("id").primaryKey(),
