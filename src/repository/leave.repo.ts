@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { leave, Employee } from "../db/schema.js";
 import { db } from "../db/connection.js";
+import { employeeIsVisible } from "./employeeVisibility.js";
 
 class LeaveRepository {
   private db: typeof db;
@@ -20,13 +21,16 @@ class LeaveRepository {
     const result = await db
       .select()
       .from(leave)
-      .where(eq(leave.id, id))
+      .where(and(eq(leave.id, id), employeeIsVisible(leave.empId)))
       .limit(1);
     return result[0];
   }
 
   async getLeavesByEmployeeId(empId: number) {
-    const result = await db.select().from(leave).where(eq(leave.empId, empId));
+    const result = await db
+      .select()
+      .from(leave)
+      .where(and(eq(leave.empId, empId), employeeIsVisible(leave.empId)));
     return result;
   }
 
@@ -34,13 +38,16 @@ class LeaveRepository {
     const [result] = await db
       .select()
       .from(leave)
-      .where(eq(leave.empId, userId))
+      .where(and(eq(leave.empId, userId), employeeIsVisible(leave.empId)))
       .limit(1);
     return result ?? null;
   }
 
   async getAllLeaves() {
-    const result = await db.select().from(leave);
+    const result = await db
+      .select()
+      .from(leave)
+      .where(employeeIsVisible(leave.empId));
     return result;
   }
 
@@ -49,7 +56,10 @@ class LeaveRepository {
       .select({ leave })
       .from(leave)
       .innerJoin(Employee, eq(Employee.userId, leave.empId))
-      .where(eq(Employee.adminId, adminId));
+      .where(and(
+        eq(Employee.adminId, adminId),
+        employeeIsVisible(leave.empId),
+      ));
   }
 
   async getLeaveByIdForAdmin(id: number, adminId: number) {
@@ -57,7 +67,11 @@ class LeaveRepository {
       .select({ leave })
       .from(leave)
       .innerJoin(Employee, eq(Employee.userId, leave.empId))
-      .where(and(eq(leave.id, id), eq(Employee.adminId, adminId)))
+      .where(and(
+        eq(leave.id, id),
+        eq(Employee.adminId, adminId),
+        employeeIsVisible(leave.empId),
+      ))
       .limit(1);
     return result?.leave ?? null;
   }
@@ -66,7 +80,7 @@ class LeaveRepository {
     const result = await db
       .select()
       .from(leave)
-      .where(eq(leave.empId, userId));
+      .where(and(eq(leave.empId, userId), employeeIsVisible(leave.empId)));
     return result;
   }
 

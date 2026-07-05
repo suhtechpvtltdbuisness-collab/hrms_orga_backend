@@ -1,6 +1,7 @@
 import { db } from "../db/connection.js";
 import { document, Employee, users } from "../db/schema.js";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { employeeIsVisible } from "./employeeVisibility.js";
 
 export class DocumentRepository {
   async createDocument(data: typeof document.$inferInsert) {
@@ -14,7 +15,8 @@ export class DocumentRepository {
         employee: Employee,
       })
       .from(document)
-      .leftJoin(Employee, eq(document.empId, Employee.userId));
+      .leftJoin(Employee, eq(document.empId, Employee.userId))
+      .where(employeeIsVisible(document.empId));
   }
 
   async getDocumentById(id: number) {
@@ -25,7 +27,7 @@ export class DocumentRepository {
       })
       .from(document)
       .leftJoin(Employee, eq(document.empId, Employee.userId))
-      .where(eq(document.id, id));
+      .where(and(eq(document.id, id), employeeIsVisible(document.empId)));
   }
 
   async getDocumentsByEmployeeId(empId: number) {
@@ -36,7 +38,10 @@ export class DocumentRepository {
       })
       .from(document)
       .leftJoin(Employee, eq(document.empId, Employee.userId))
-      .where(eq(document.empId, empId));
+      .where(and(
+        eq(document.empId, empId),
+        employeeIsVisible(document.empId),
+      ));
   }
 
   async updateDocument(id: number, data: typeof document.$inferInsert) {

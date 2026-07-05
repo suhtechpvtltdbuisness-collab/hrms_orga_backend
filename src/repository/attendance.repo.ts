@@ -7,6 +7,7 @@ import {
   department,
 } from "../db/schema.js";
 import { eq, and, sql, ilike, gte, lte, desc } from "drizzle-orm";
+import { employeeIsVisible } from "./employeeVisibility.js";
 
 export type AttendanceFilters = {
   employeeName?: string;
@@ -97,7 +98,7 @@ export class AttendanceRepository {
       .innerJoin(Employee, eq(Employee.userId, users.id))
       .leftJoin(employment, eq(employment.employeeId, users.id))
       .leftJoin(department, eq(employment.departmentId, department.id))
-      .where(eq(users.id, empId))
+      .where(and(eq(users.id, empId), eq(users.isDeleted, false)))
       .limit(1);
 
     return info;
@@ -108,7 +109,10 @@ export class AttendanceRepository {
   }
 
   async getAllAttendances(currentUser: any, filters: AttendanceFilters = {}) {
-    const conditions = [eq(attendance.isDeleted, false)];
+    const conditions = [
+      eq(attendance.isDeleted, false),
+      eq(users.isDeleted, false),
+    ];
 
     // Role-based organization scoping
     if (currentUser.roleId !== 0) {
@@ -251,7 +255,11 @@ export class AttendanceRepository {
 
   async getAttendanceById(id: number) {
     return await attendanceJoins().where(
-      and(eq(attendance.id, id), eq(attendance.isDeleted, false)),
+      and(
+        eq(attendance.id, id),
+        eq(attendance.isDeleted, false),
+        eq(users.isDeleted, false),
+      ),
     );
   }
 
@@ -259,6 +267,7 @@ export class AttendanceRepository {
     const conditions = [
       eq(attendance.empId, empId),
       eq(attendance.isDeleted, false),
+      eq(users.isDeleted, false),
     ];
 
     if (currentUser.roleId !== 0) {
@@ -293,6 +302,7 @@ export class AttendanceRepository {
         and(
           eq(attendance.empId, empId),
           eq(attendance.isDeleted, false),
+          employeeIsVisible(attendance.empId),
           gte(attendance.attendanceDate, startDate),
           lte(attendance.attendanceDate, endDate),
         ),
@@ -310,6 +320,7 @@ export class AttendanceRepository {
           eq(attendance.empId, empId),
           eq(attendance.attendanceDate, attendanceDate),
           eq(attendance.isDeleted, false),
+          employeeIsVisible(attendance.empId),
         ),
       )
       .limit(1);

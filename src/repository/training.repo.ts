@@ -1,6 +1,7 @@
 import { db } from "../db/connection.js";
 import { trainingAndDevelopment, Employee } from "../db/schema.js";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { employeeIsVisible } from "./employeeVisibility.js";
 
 export class TrainingRepository {
   async createTraining(data: typeof trainingAndDevelopment.$inferInsert) {
@@ -14,7 +15,8 @@ export class TrainingRepository {
         employee: Employee,
       })
       .from(trainingAndDevelopment)
-      .leftJoin(Employee, eq(trainingAndDevelopment.empId, Employee.id));
+      .leftJoin(Employee, eq(trainingAndDevelopment.empId, Employee.userId))
+      .where(employeeIsVisible(trainingAndDevelopment.empId));
   }
 
   async getTrainingById(id: number) {
@@ -24,8 +26,11 @@ export class TrainingRepository {
         employee: Employee,
       })
       .from(trainingAndDevelopment)
-      .leftJoin(Employee, eq(trainingAndDevelopment.empId, Employee.id))
-      .where(eq(trainingAndDevelopment.id, id));
+      .leftJoin(Employee, eq(trainingAndDevelopment.empId, Employee.userId))
+      .where(and(
+        eq(trainingAndDevelopment.id, id),
+        employeeIsVisible(trainingAndDevelopment.empId),
+      ));
   }
 
   async getTrainingsByEmployeeId(empId: number) {
@@ -35,8 +40,11 @@ export class TrainingRepository {
         employee: Employee,
       })
       .from(trainingAndDevelopment)
-      .leftJoin(Employee, eq(trainingAndDevelopment.empId, Employee.id))
-      .where(eq(trainingAndDevelopment.empId, empId));
+      .leftJoin(Employee, eq(trainingAndDevelopment.empId, Employee.userId))
+      .where(and(
+        eq(trainingAndDevelopment.empId, empId),
+        employeeIsVisible(trainingAndDevelopment.empId),
+      ));
   }
 
   async updateTraining(
@@ -69,7 +77,7 @@ export class TrainingRepository {
     return await db
       .update(trainingAndDevelopment)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(trainingAndDevelopment.empId, employeeResult[0].id))
+      .where(eq(trainingAndDevelopment.empId, employeeResult[0].userId))
       .returning();
   }
 
@@ -94,7 +102,7 @@ export class TrainingRepository {
 
     return await db
       .delete(trainingAndDevelopment)
-      .where(eq(trainingAndDevelopment.empId, employeeResult[0].id))
+      .where(eq(trainingAndDevelopment.empId, employeeResult[0].userId))
       .returning();
   }
 }

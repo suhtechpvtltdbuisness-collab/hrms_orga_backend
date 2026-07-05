@@ -1,6 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "../db/connection.js";
 import { Employee, leaveRequest, users } from "../db/schema.js";
+import { employeeIsVisible } from "./employeeVisibility.js";
 
 export type LeaveRequestFilters = {
   status?: string;
@@ -33,7 +34,10 @@ class LeaveRequestRepository {
   }
 
   async getLeaveRequests(filters: LeaveRequestFilters = {}) {
-    const conditions = [eq(leaveRequest.isDeleted, false)];
+    const conditions = [
+      eq(leaveRequest.isDeleted, false),
+      employeeIsVisible(leaveRequest.empId),
+    ];
 
     if (filters.status) {
       conditions.push(
@@ -71,6 +75,7 @@ class LeaveRequestRepository {
         and(
           eq(leaveRequest.id, id),
           eq(leaveRequest.isDeleted, false),
+          employeeIsVisible(leaveRequest.empId),
           ...(adminId ? [eq(Employee.adminId, adminId)] : []),
         ),
       )

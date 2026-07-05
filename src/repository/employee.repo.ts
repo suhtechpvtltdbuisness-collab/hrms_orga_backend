@@ -1,5 +1,5 @@
 import { db } from "../db/connection.js";
-import { Employee, employment, payroll, users } from "../db/schema.js";
+import { Employee, users } from "../db/schema.js";
 import { eq, and } from "drizzle-orm";
 
 export class EmployeeRepository {
@@ -72,16 +72,6 @@ export class EmployeeRepository {
           updatedAt: new Date(),
         })
         .where(and(eq(users.id, userId), eq(users.isDeleted, false)));
-
-      await tx
-        .update(employment)
-        .set({ isDeleted: true, updatedAt: new Date() })
-        .where(and(eq(employment.employeeId, userId), eq(employment.isDeleted, false)));
-
-      await tx
-        .update(payroll)
-        .set({ isDeleted: true, updatedAt: new Date() })
-        .where(and(eq(payroll.empId, userId), eq(payroll.isDeleted, false)));
 
       return await tx
         .select({

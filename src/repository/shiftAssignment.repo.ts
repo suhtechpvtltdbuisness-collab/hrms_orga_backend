@@ -1,6 +1,7 @@
 import { and, asc, count, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { db } from "../db/connection.js";
 import { Employee, shiftAssignment, shiftType, users } from "../db/schema.js";
+import { employeeIsVisible } from "./employeeVisibility.js";
 
 export class ShiftAssignmentRepository {
   async getRoster(adminId: number, rosterDate: string, search: string, page: number, limit: number) {
@@ -61,14 +62,21 @@ export class ShiftAssignmentRepository {
     return db
       .select({ userId: Employee.userId })
       .from(Employee)
-      .where(and(eq(Employee.adminId, adminId), inArray(Employee.userId, employeeIds)));
+      .where(and(
+        eq(Employee.adminId, adminId),
+        inArray(Employee.userId, employeeIds),
+        employeeIsVisible(Employee.userId),
+      ));
   }
 
   async getEmployeeByUserId(userId: number) {
     const [employee] = await db
       .select({ userId: Employee.userId, adminId: Employee.adminId })
       .from(Employee)
-      .where(eq(Employee.userId, userId))
+      .where(and(
+        eq(Employee.userId, userId),
+        employeeIsVisible(Employee.userId),
+      ))
       .limit(1);
     return employee;
   }
@@ -99,6 +107,7 @@ export class ShiftAssignmentRepository {
       .where(
         and(
           eq(shiftAssignment.empId, empId),
+          employeeIsVisible(shiftAssignment.empId),
           inArray(shiftAssignment.rosterDate, rosterDates),
         ),
       )
@@ -186,6 +195,7 @@ export class ShiftAssignmentRepository {
         and(
           eq(shiftAssignment.adminId, adminId),
           eq(shiftAssignment.empId, empId),
+          employeeIsVisible(shiftAssignment.empId),
           fromDate ? sql`${shiftAssignment.rosterDate} >= ${fromDate}` : undefined,
           toDate ? sql`${shiftAssignment.rosterDate} <= ${toDate}` : undefined,
         ),

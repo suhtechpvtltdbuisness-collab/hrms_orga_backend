@@ -1,6 +1,7 @@
 import { db } from "../db/connection.js";
 import { employment } from "../db/schema.js";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { employeeIsVisible } from "./employeeVisibility.js";
 
 class EmploymentRepository {
   private db: typeof db;
@@ -17,7 +18,13 @@ class EmploymentRepository {
     const result = await this.db
       .select()
       .from(employment)
-      .where(eq(employment.id, id))
+      .where(
+        and(
+          eq(employment.id, id),
+          eq(employment.isDeleted, false),
+          employeeIsVisible(employment.employeeId),
+        ),
+      )
       .limit(1);
     return result[0];
   }
@@ -26,7 +33,12 @@ class EmploymentRepository {
     const result = await this.db
       .select()
       .from(employment)
-      .where(eq(employment.isDeleted, false));
+      .where(
+        and(
+          eq(employment.isDeleted, false),
+          employeeIsVisible(employment.employeeId),
+        ),
+      );
     return result;
   }
 
@@ -34,7 +46,13 @@ class EmploymentRepository {
     const result = await this.db
       .select()
       .from(employment)
-      .where(eq(employment.employeeId, employeeId));
+      .where(
+        and(
+          eq(employment.employeeId, employeeId),
+          eq(employment.isDeleted, false),
+          employeeIsVisible(employment.employeeId),
+        ),
+      );
     return result;
   }
 
@@ -42,7 +60,13 @@ class EmploymentRepository {
     const result = await this.db
       .select()
       .from(employment)
-      .where(eq(employment.departmentId, departmentId));
+      .where(
+        and(
+          eq(employment.departmentId, departmentId),
+          eq(employment.isDeleted, false),
+          employeeIsVisible(employment.employeeId),
+        ),
+      );
     return result;
   }
 

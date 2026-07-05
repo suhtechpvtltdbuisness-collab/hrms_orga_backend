@@ -1,6 +1,7 @@
 import { db } from "../db/connection.js";
 import { offboarding, Employee, department } from "../db/schema.js";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { employeeIsVisible } from "./employeeVisibility.js";
 
 export class OffboardingRepository {
   async createOffboarding(data: typeof offboarding.$inferInsert) {
@@ -15,8 +16,9 @@ export class OffboardingRepository {
         department: department,
       })
       .from(offboarding)
-      .leftJoin(Employee, eq(offboarding.empId, Employee.id))
-      .leftJoin(department, eq(offboarding.departmentId, department.id));
+      .leftJoin(Employee, eq(offboarding.empId, Employee.userId))
+      .leftJoin(department, eq(offboarding.departmentId, department.id))
+      .where(employeeIsVisible(offboarding.empId));
   }
 
   async getOffboardingById(id: number) {
@@ -27,9 +29,9 @@ export class OffboardingRepository {
         department: department,
       })
       .from(offboarding)
-      .leftJoin(Employee, eq(offboarding.empId, Employee.id))
+      .leftJoin(Employee, eq(offboarding.empId, Employee.userId))
       .leftJoin(department, eq(offboarding.departmentId, department.id))
-      .where(eq(offboarding.id, id));
+      .where(and(eq(offboarding.id, id), employeeIsVisible(offboarding.empId)));
   }
 
   async getOffboardingsByEmployeeId(empId: number) {
@@ -40,9 +42,12 @@ export class OffboardingRepository {
         department: department,
       })
       .from(offboarding)
-      .leftJoin(Employee, eq(offboarding.empId, Employee.id))
+      .leftJoin(Employee, eq(offboarding.empId, Employee.userId))
       .leftJoin(department, eq(offboarding.departmentId, department.id))
-      .where(eq(offboarding.empId, empId));
+      .where(and(
+        eq(offboarding.empId, empId),
+        employeeIsVisible(offboarding.empId),
+      ));
   }
 
   async updateOffboarding(id: number, data: typeof offboarding.$inferInsert) {
@@ -71,7 +76,7 @@ export class OffboardingRepository {
     return await db
       .update(offboarding)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(offboarding.empId, employeeResult[0].id))
+      .where(eq(offboarding.empId, employeeResult[0].userId))
       .returning();
   }
 
@@ -95,7 +100,7 @@ export class OffboardingRepository {
 
     return await db
       .delete(offboarding)
-      .where(eq(offboarding.empId, employeeResult[0].id))
+      .where(eq(offboarding.empId, employeeResult[0].userId))
       .returning();
   }
 }

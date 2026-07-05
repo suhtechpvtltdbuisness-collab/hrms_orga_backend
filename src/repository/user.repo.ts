@@ -260,16 +260,6 @@ class UserRepository {
         .where(eq(users.id, id))
         .returning();
 
-      await tx
-        .update(employment)
-        .set({ isDeleted: true, updatedAt: new Date() })
-        .where(and(eq(employment.employeeId, id), eq(employment.isDeleted, false)));
-
-      await tx
-        .update(payroll)
-        .set({ isDeleted: true, updatedAt: new Date() })
-        .where(and(eq(payroll.empId, id), eq(payroll.isDeleted, false)));
-
       return deletedUser;
     });
   }

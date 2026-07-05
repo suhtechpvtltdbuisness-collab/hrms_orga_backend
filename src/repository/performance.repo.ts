@@ -1,6 +1,7 @@
 import { db } from "../db/connection.js";
 import { performance, Employee, users } from "../db/schema.js";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { employeeIsVisible } from "./employeeVisibility.js";
 
 export class PerformanceRepository {
   async createPerformance(data: typeof performance.$inferInsert) {
@@ -14,7 +15,8 @@ export class PerformanceRepository {
         employee: Employee,
       })
       .from(performance)
-      .leftJoin(Employee, eq(performance.empId, Employee.id));
+      .leftJoin(Employee, eq(performance.empId, Employee.userId))
+      .where(employeeIsVisible(performance.empId));
   }
 
   async getPerformanceById(id: number) {
@@ -24,8 +26,8 @@ export class PerformanceRepository {
         employee: Employee,
       })
       .from(performance)
-      .leftJoin(Employee, eq(performance.empId, Employee.id))
-      .where(eq(performance.id, id));
+      .leftJoin(Employee, eq(performance.empId, Employee.userId))
+      .where(and(eq(performance.id, id), employeeIsVisible(performance.empId)));
   }
 
   async getPerformancesByEmployeeId(empId: number) {
@@ -35,8 +37,11 @@ export class PerformanceRepository {
         employee: Employee,
       })
       .from(performance)
-      .leftJoin(Employee, eq(performance.empId, Employee.id))
-      .where(eq(performance.empId, empId));
+      .leftJoin(Employee, eq(performance.empId, Employee.userId))
+      .where(and(
+        eq(performance.empId, empId),
+        employeeIsVisible(performance.empId),
+      ));
   }
 
   async updatePerformance(id: number, data: typeof performance.$inferInsert) {
@@ -65,7 +70,7 @@ export class PerformanceRepository {
     return await db
       .update(performance)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(performance.empId, employeeResult[0].id))
+      .where(eq(performance.empId, employeeResult[0].userId))
       .returning();
   }
 
@@ -89,7 +94,7 @@ export class PerformanceRepository {
 
     return await db
       .delete(performance)
-      .where(eq(performance.empId, employeeResult[0].id))
+      .where(eq(performance.empId, employeeResult[0].userId))
       .returning();
   }
 }

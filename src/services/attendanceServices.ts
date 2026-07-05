@@ -4,7 +4,7 @@ import {
 } from "../repository/attendance.repo.js";
 import { attendance, users, Employee } from "../db/schema.js";
 import { db } from "../db/connection.js";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { ShiftAssignmentRepository } from "../repository/shiftAssignment.repo.js";
 
 type AttendanceStatus = typeof attendance.$inferSelect.status;
@@ -214,9 +214,16 @@ function normalizeAdminAttendanceBody(body: AdminAttendanceBody = {}) {
 
 async function validateEmployee(empId: number) {
   const [employee] = await db
-    .select()
+    .select({ userId: Employee.userId })
     .from(Employee)
-    .where(eq(Employee.userId, empId))
+    .innerJoin(users, eq(users.id, Employee.userId))
+    .where(
+      and(
+        eq(Employee.userId, empId),
+        eq(users.isDeleted, false),
+        eq(users.active, true),
+      ),
+    )
     .limit(1);
 
   if (!employee) {

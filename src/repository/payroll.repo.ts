@@ -1,6 +1,7 @@
 import { eq, and } from "drizzle-orm";
 import { payroll, Employee } from "../db/schema.js";
 import { db } from "../db/connection.js";
+import { employeeIsVisible } from "./employeeVisibility.js";
 
 class PayrollRepository {
   private db: typeof db;
@@ -20,7 +21,11 @@ class PayrollRepository {
     const result = await db
       .select()
       .from(payroll)
-      .where(and(eq(payroll.id, id), eq(payroll.isDeleted, false)))
+      .where(and(
+        eq(payroll.id, id),
+        eq(payroll.isDeleted, false),
+        employeeIsVisible(payroll.empId),
+      ))
       .limit(1);
     return result[0];
   }
@@ -29,7 +34,11 @@ class PayrollRepository {
     const result = await db
       .select()
       .from(payroll)
-      .where(and(eq(payroll.empId, empId), eq(payroll.isDeleted, false)));
+      .where(and(
+        eq(payroll.empId, empId),
+        eq(payroll.isDeleted, false),
+        employeeIsVisible(payroll.empId),
+      ));
     return result;
   }
 
@@ -41,7 +50,11 @@ class PayrollRepository {
       })
       .from(payroll)
       .innerJoin(Employee, eq(payroll.empId, Employee.userId))
-      .where(and(eq(Employee.userId, userId), eq(payroll.isDeleted, false)));
+      .where(and(
+        eq(Employee.userId, userId),
+        eq(payroll.isDeleted, false),
+        employeeIsVisible(payroll.empId),
+      ));
     return result;
   }
 
@@ -49,7 +62,10 @@ class PayrollRepository {
     const result = await db
       .select()
       .from(payroll)
-      .where(eq(payroll.isDeleted, false));
+      .where(and(
+        eq(payroll.isDeleted, false),
+        employeeIsVisible(payroll.empId),
+      ));
     return result;
   }
 

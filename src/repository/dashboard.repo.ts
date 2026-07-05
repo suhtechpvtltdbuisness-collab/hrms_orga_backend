@@ -9,6 +9,7 @@ import {
   shiftRequest,
   users,
 } from "../db/schema.js";
+import { employeeIsVisible } from "./employeeVisibility.js";
 
 export class DashboardRepository {
   async getEmployeeSummary(adminId: number, monthStart: Date, nextMonthStart: Date) {
@@ -47,6 +48,7 @@ export class DashboardRepository {
         and(
           eq(Employee.adminId, adminId),
           eq(attendance.isDeleted, false),
+          employeeIsVisible(attendance.empId),
           inArray(attendance.attendanceDate, dates),
         ),
       )
@@ -61,13 +63,21 @@ export class DashboardRepository {
         .select({ status: leaveRequest.status, value: count() })
         .from(leaveRequest)
         .innerJoin(Employee, eq(Employee.userId, leaveRequest.empId))
-        .where(and(employeeScope, eq(leaveRequest.isDeleted, false)))
+        .where(and(
+          employeeScope,
+          eq(leaveRequest.isDeleted, false),
+          employeeIsVisible(leaveRequest.empId),
+        ))
         .groupBy(leaveRequest.status),
       db
         .select({ status: shiftRequest.status, value: count() })
         .from(shiftRequest)
         .innerJoin(Employee, eq(Employee.userId, shiftRequest.empId))
-        .where(and(employeeScope, eq(shiftRequest.isDeleted, false)))
+        .where(and(
+          employeeScope,
+          eq(shiftRequest.isDeleted, false),
+          employeeIsVisible(shiftRequest.empId),
+        ))
         .groupBy(shiftRequest.status),
     ]);
 
@@ -112,7 +122,11 @@ export class DashboardRepository {
       .from(attendance)
       .innerJoin(Employee, eq(Employee.userId, attendance.empId))
       .innerJoin(users, eq(users.id, attendance.empId))
-      .where(and(eq(Employee.adminId, adminId), eq(attendance.isDeleted, false)))
+      .where(and(
+        eq(Employee.adminId, adminId),
+        eq(attendance.isDeleted, false),
+        eq(users.isDeleted, false),
+      ))
       .orderBy(desc(attendance.updatedAt))
       .limit(limit);
   }
@@ -128,7 +142,11 @@ export class DashboardRepository {
       .from(leaveRequest)
       .innerJoin(Employee, eq(Employee.userId, leaveRequest.empId))
       .innerJoin(users, eq(users.id, leaveRequest.empId))
-      .where(and(eq(Employee.adminId, adminId), eq(leaveRequest.isDeleted, false)))
+      .where(and(
+        eq(Employee.adminId, adminId),
+        eq(leaveRequest.isDeleted, false),
+        eq(users.isDeleted, false),
+      ))
       .orderBy(desc(leaveRequest.updatedAt))
       .limit(limit);
   }

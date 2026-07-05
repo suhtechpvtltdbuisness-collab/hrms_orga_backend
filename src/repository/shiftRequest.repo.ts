@@ -1,6 +1,7 @@
 import { db } from "../db/connection.js";
 import { Employee, shiftRequest, shiftType, users } from "../db/schema.js";
 import { eq, and, desc } from "drizzle-orm";
+import { employeeIsVisible } from "./employeeVisibility.js";
 
 export type ShiftRequestFilters = {
   status?: string;
@@ -32,7 +33,10 @@ class ShiftRequestRepository {
   }
 
   async getShiftRequests(filters: ShiftRequestFilters = {}) {
-    const conditions = [eq(shiftRequest.isDeleted, false)];
+    const conditions = [
+      eq(shiftRequest.isDeleted, false),
+      employeeIsVisible(shiftRequest.empId),
+    ];
 
     if (filters.status) {
       conditions.push(
@@ -59,7 +63,11 @@ class ShiftRequestRepository {
   }
 
   async getShiftRequestById(id: number, adminId?: number) {
-    const conditions = [eq(shiftRequest.id, id), eq(shiftRequest.isDeleted, false)];
+    const conditions = [
+      eq(shiftRequest.id, id),
+      eq(shiftRequest.isDeleted, false),
+      employeeIsVisible(shiftRequest.empId),
+    ];
     if (adminId) conditions.push(eq(Employee.adminId, adminId));
     const [result] = await db
       .select(this.selectFields)
