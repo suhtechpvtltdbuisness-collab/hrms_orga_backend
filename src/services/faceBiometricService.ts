@@ -170,17 +170,20 @@ export class FaceBiometricService {
     let faceImagePath: string | null = null;
     let attendance;
     try {
+      faceImagePath = await saveDataUrlToLocal(
+        capturedImage,
+        "face-attendance",
+      );
       if (type === "check-in") {
-        faceImagePath = await saveDataUrlToLocal(
-          capturedImage,
-          "face-attendance",
-        );
         attendance = await this.attendance.checkInSelf(user, {
           verificationMethod: "face",
           faceImagePath,
         });
       } else {
-        attendance = await this.attendance.checkOutSelf(user);
+        attendance = await this.attendance.checkOutSelf(user, {
+          verificationMethod: "face",
+          faceImagePath,
+        });
       }
     } catch (error) {
       if (faceImagePath) {
@@ -209,7 +212,10 @@ export class FaceBiometricService {
         verificationMethod: "password",
         faceImagePath: null,
       })
-      : await this.attendance.checkOutSelf(user);
+      : await this.attendance.checkOutSelf(user, {
+        verificationMethod: "password",
+        faceImagePath: null,
+      });
     return { type, method: "password", timestamp: new Date().toISOString(), attendance };
   }
 }

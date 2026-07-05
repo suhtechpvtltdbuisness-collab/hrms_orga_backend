@@ -176,6 +176,13 @@
       "when": 1783300000000,
       "tag": "0024_steady_face_attendance_metadata",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1783305000000,
+      "tag": "0025_checkout_face_attendance_metadata",
+      "breakpoints": true
     }
   ]
 }

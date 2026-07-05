@@ -393,6 +393,8 @@ export const attendance = pgTable(
     checkInVerificationMethod: varchar("check_in_verification_method", { length: 30 }),
     checkInFaceImage: text("check_in_face_image"),
     checkOut: timestamp("check_out"),
+    checkOutVerificationMethod: varchar("check_out_verification_method", { length: 30 }),
+    checkOutFaceImage: text("check_out_face_image"),
     isDeleted: boolean("is_deleted").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

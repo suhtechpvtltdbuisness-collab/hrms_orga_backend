@@ -112,7 +112,7 @@ type ShiftWindow = {
   lateAfter: Date;
 };
 
-type CheckInMetadata = {
+type AttendanceVerificationMetadata = {
   verificationMethod?: string | null;
   faceImagePath?: string | null;
 };
@@ -574,7 +574,7 @@ export class AttendanceService {
 
   async checkInSelf(
     currentUser: typeof users.$inferSelect,
-    metadata: CheckInMetadata = {},
+    metadata: AttendanceVerificationMetadata = {},
   ) {
     await validateEmployee(currentUser.id);
 
@@ -646,7 +646,10 @@ export class AttendanceService {
     return this.adjustAttendanceStatus(enriched[0]);
   }
 
-  async checkOutSelf(currentUser: typeof users.$inferSelect) {
+  async checkOutSelf(
+    currentUser: typeof users.$inferSelect,
+    metadata: AttendanceVerificationMetadata = {},
+  ) {
     await validateEmployee(currentUser.id);
 
     const shiftWindow = await this.getAssignedShiftWindow(currentUser.id);
@@ -682,6 +685,8 @@ export class AttendanceService {
 
     const updated = await this.attendanceRepo.updateAttendance(record.id, {
       checkOut: checkOutTime,
+      checkOutVerificationMethod: metadata.verificationMethod ?? null,
+      checkOutFaceImage: metadata.faceImagePath ?? null,
       status,
       period,
     });

@@ -31,14 +31,26 @@ const attendanceSelectFields = {
   earlyExit: attendance.earlyExit,
   markedBy: attendance.markedBy,
   checkIn: attendance.checkIn,
+  checkInVerificationMethod: attendance.checkInVerificationMethod,
   verificationMethod: attendance.checkInVerificationMethod,
   // Never send legacy base64 captures through list endpoints.
+  checkInFaceImage: sql<string | null>`CASE
+    WHEN ${attendance.checkInFaceImage} LIKE '/uploads/%'
+    THEN ${attendance.checkInFaceImage}
+    ELSE NULL
+  END`,
   faceImage: sql<string | null>`CASE
     WHEN ${attendance.checkInFaceImage} LIKE '/uploads/%'
     THEN ${attendance.checkInFaceImage}
     ELSE NULL
   END`,
   checkOut: attendance.checkOut,
+  checkOutVerificationMethod: attendance.checkOutVerificationMethod,
+  checkOutFaceImage: sql<string | null>`CASE
+    WHEN ${attendance.checkOutFaceImage} LIKE '/uploads/%'
+    THEN ${attendance.checkOutFaceImage}
+    ELSE NULL
+  END`,
   createdAt: attendance.createdAt,
   updatedAt: attendance.updatedAt,
 };
@@ -221,9 +233,13 @@ export class AttendanceRepository {
           earlyExit: false,
           markedBy: 0,
           checkIn: null,
+          checkInVerificationMethod: null,
           verificationMethod: null,
+          checkInFaceImage: null,
           faceImage: null,
           checkOut: null,
+          checkOutVerificationMethod: null,
+          checkOutFaceImage: null,
           createdAt: new Date(),
           updatedAt: new Date(),
         });
