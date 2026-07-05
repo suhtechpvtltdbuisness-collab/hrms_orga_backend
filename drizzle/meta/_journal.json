@@ -169,6 +169,13 @@
       "when": 1783163614092,
       "tag": "0023_melodic_the_executioner",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1783300000000,
+      "tag": "0024_steady_face_attendance_metadata",
+      "breakpoints": true
     }
   ]
 }

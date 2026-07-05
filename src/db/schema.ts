@@ -390,6 +390,8 @@ export const attendance = pgTable(
       .notNull()
       .references(() => users.id),
     checkIn: timestamp("check_in"),
+    checkInVerificationMethod: varchar("check_in_verification_method", { length: 30 }),
+    checkInFaceImage: text("check_in_face_image"),
     checkOut: timestamp("check_out"),
     isDeleted: boolean("is_deleted").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),

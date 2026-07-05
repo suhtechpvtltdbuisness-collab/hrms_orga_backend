@@ -112,6 +112,11 @@ type ShiftWindow = {
   lateAfter: Date;
 };
 
+type CheckInMetadata = {
+  verificationMethod?: string | null;
+  faceImage?: string | null;
+};
+
 function validateStatus(status: string): AttendanceStatus {
   if (!VALID_STATUSES.includes(status as AttendanceStatus)) {
     throw new Error(
@@ -567,7 +572,10 @@ export class AttendanceService {
     return this.adjustAttendanceStatus(enriched[0]);
   }
 
-  async checkInSelf(currentUser: typeof users.$inferSelect) {
+  async checkInSelf(
+    currentUser: typeof users.$inferSelect,
+    metadata: CheckInMetadata = {},
+  ) {
     await validateEmployee(currentUser.id);
 
     const now = new Date();
@@ -608,6 +616,8 @@ export class AttendanceService {
         period: "less_than_half_day",
         shift: shiftWindow.assignment.shiftName,
         markedBy: currentUser.id,
+        checkInVerificationMethod: metadata.verificationMethod ?? null,
+        checkInFaceImage: metadata.faceImage ?? null,
       });
       const enriched = await this.attendanceRepo.getAttendanceById(updated[0].id);
       return this.adjustAttendanceStatus(enriched[0]);
@@ -626,6 +636,8 @@ export class AttendanceService {
       earlyExit: false,
       markedBy: currentUser.id,
       checkIn: now,
+      checkInVerificationMethod: metadata.verificationMethod ?? null,
+      checkInFaceImage: metadata.faceImage ?? null,
       checkOut: null,
       isDeleted: false,
     });

@@ -161,12 +161,16 @@ export class FaceBiometricService {
   }
 
   async verifyAndMark(image: unknown, type: unknown, user: typeof users.$inferSelect) {
-    const verification = await this.verify(image, user);
+    const capturedImage = validateImage(image);
+    const verification = await this.verify(capturedImage, user);
     if (type !== "check-in" && type !== "check-out") {
       throw httpError("type must be check-in or check-out", 400, "INVALID_ATTENDANCE_TYPE");
     }
     const attendance = type === "check-in"
-      ? await this.attendance.checkInSelf(user)
+      ? await this.attendance.checkInSelf(user, {
+        verificationMethod: "face",
+        faceImage: capturedImage,
+      })
       : await this.attendance.checkOutSelf(user);
     return { type, method: "face", timestamp: new Date().toISOString(), verification, attendance };
   }
@@ -183,7 +187,10 @@ export class FaceBiometricService {
       throw httpError("type must be check-in or check-out", 400, "INVALID_ATTENDANCE_TYPE");
     }
     const attendance = type === "check-in"
-      ? await this.attendance.checkInSelf(user)
+      ? await this.attendance.checkInSelf(user, {
+        verificationMethod: "password",
+        faceImage: null,
+      })
       : await this.attendance.checkOutSelf(user);
     return { type, method: "password", timestamp: new Date().toISOString(), attendance };
   }
