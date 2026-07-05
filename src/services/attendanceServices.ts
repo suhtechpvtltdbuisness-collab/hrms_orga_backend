@@ -276,15 +276,41 @@ export class AttendanceService {
   private adjustAttendanceStatus(record: any): any {
     if (!record) return record;
     const todayStr = getTodayDateString();
+    let adjustedRecord = record;
+
     // If they checked in but did not check out, and the attendance date is in the past
     if (record.checkIn && !record.checkOut && record.attendanceDate < todayStr) {
-      return { 
+      adjustedRecord = {
         ...record, 
         status: "absent" as const, 
         period: "less_than_half_day" 
       };
     }
-    return record;
+
+    if (record.checkIn && record.checkOut) {
+      const checkInTime = new Date(record.checkIn).getTime();
+      const checkOutTime = new Date(record.checkOut).getTime();
+      const workedMinutes = Math.max(
+        0,
+        Math.floor((checkOutTime - checkInTime) / 60_000),
+      );
+
+      return {
+        ...adjustedRecord,
+        // A completed duty session is present, even when it is shorter than half a day.
+        status: "present" as const,
+        workedMinutes,
+        workedHours: Number((workedMinutes / 60).toFixed(2)),
+        workedDuration: `${Math.floor(workedMinutes / 60)}h ${workedMinutes % 60}m`,
+      };
+    }
+
+    return {
+      ...adjustedRecord,
+      workedMinutes: null,
+      workedHours: null,
+      workedDuration: null,
+    };
   }
 
   async createAttendance(
@@ -676,10 +702,8 @@ export class AttendanceService {
     let status: AttendanceStatus = "present";
     let period = "full_time";
     if (hours < 3) {
-      status = "absent";
       period = "less_than_half_day";
     } else if (hours < 8) {
-      status = "present";
       period = "half_day";
     }
 
