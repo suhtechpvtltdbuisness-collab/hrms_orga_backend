@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../db/connection.js";
 import { Employee, employeeFaceBiometric, users } from "../db/schema.js";
 import { AttendanceService } from "./attendanceServices.js";
+import { deleteLocalUpload, saveDataUrlToLocal } from "./uploadService.js";
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const configuredThreshold = Number(process.env.FACE_MATCH_THRESHOLD || 0.42);
@@ -166,12 +167,29 @@ export class FaceBiometricService {
     if (type !== "check-in" && type !== "check-out") {
       throw httpError("type must be check-in or check-out", 400, "INVALID_ATTENDANCE_TYPE");
     }
-    const attendance = type === "check-in"
-      ? await this.attendance.checkInSelf(user, {
-        verificationMethod: "face",
-        faceImage: capturedImage,
-      })
-      : await this.attendance.checkOutSelf(user);
+    let faceImagePath: string | null = null;
+    let attendance;
+    try {
+      if (type === "check-in") {
+        faceImagePath = await saveDataUrlToLocal(
+          capturedImage,
+          "face-attendance",
+        );
+        attendance = await this.attendance.checkInSelf(user, {
+          verificationMethod: "face",
+          faceImagePath,
+        });
+      } else {
+        attendance = await this.attendance.checkOutSelf(user);
+      }
+    } catch (error) {
+      if (faceImagePath) {
+        await deleteLocalUpload(faceImagePath).catch((cleanupError) => {
+          console.error("Unable to clean up failed face attendance upload", cleanupError);
+        });
+      }
+      throw error;
+    }
     return { type, method: "face", timestamp: new Date().toISOString(), verification, attendance };
   }
 
@@ -189,7 +207,7 @@ export class FaceBiometricService {
     const attendance = type === "check-in"
       ? await this.attendance.checkInSelf(user, {
         verificationMethod: "password",
-        faceImage: null,
+        faceImagePath: null,
       })
       : await this.attendance.checkOutSelf(user);
     return { type, method: "password", timestamp: new Date().toISOString(), attendance };

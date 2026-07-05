@@ -32,7 +32,12 @@ const attendanceSelectFields = {
   markedBy: attendance.markedBy,
   checkIn: attendance.checkIn,
   verificationMethod: attendance.checkInVerificationMethod,
-  faceImage: attendance.checkInFaceImage,
+  // Never send legacy base64 captures through list endpoints.
+  faceImage: sql<string | null>`CASE
+    WHEN ${attendance.checkInFaceImage} LIKE '/uploads/%'
+    THEN ${attendance.checkInFaceImage}
+    ELSE NULL
+  END`,
   checkOut: attendance.checkOut,
   createdAt: attendance.createdAt,
   updatedAt: attendance.updatedAt,

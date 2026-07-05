@@ -114,7 +114,7 @@ type ShiftWindow = {
 
 type CheckInMetadata = {
   verificationMethod?: string | null;
-  faceImage?: string | null;
+  faceImagePath?: string | null;
 };
 
 function validateStatus(status: string): AttendanceStatus {
@@ -617,7 +617,7 @@ export class AttendanceService {
         shift: shiftWindow.assignment.shiftName,
         markedBy: currentUser.id,
         checkInVerificationMethod: metadata.verificationMethod ?? null,
-        checkInFaceImage: metadata.faceImage ?? null,
+        checkInFaceImage: metadata.faceImagePath ?? null,
       });
       const enriched = await this.attendanceRepo.getAttendanceById(updated[0].id);
       return this.adjustAttendanceStatus(enriched[0]);
@@ -637,7 +637,7 @@ export class AttendanceService {
       markedBy: currentUser.id,
       checkIn: now,
       checkInVerificationMethod: metadata.verificationMethod ?? null,
-      checkInFaceImage: metadata.faceImage ?? null,
+      checkInFaceImage: metadata.faceImagePath ?? null,
       checkOut: null,
       isDeleted: false,
     });

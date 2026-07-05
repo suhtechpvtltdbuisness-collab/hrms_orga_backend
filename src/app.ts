@@ -3,6 +3,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import router from "./router.js";
 import { handleRazorpayWebhook } from "./controllers/subscriptionController.js";
+import { getUploadsDirectory } from "./services/uploadService.js";
 
 const app = express();
 
@@ -46,7 +47,8 @@ app.post(
 // narrow and enforce the decoded 5 MB limit again in the biometric service.
 app.use(express.json({ limit: "7mb" }));
 app.use(express.urlencoded({ extended: true }));
-app.use("/uploads", express.static("uploads"));
+// UPLOADS_DIR can point at a persistent mounted volume in production.
+app.use("/uploads", express.static(getUploadsDirectory()));
 app.use(router);
 
 // Error handler middleware
