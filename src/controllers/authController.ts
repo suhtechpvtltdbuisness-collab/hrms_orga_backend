@@ -9,6 +9,9 @@ import { generateTokens, verifyToken } from "../utils/jwt.js";
 import { setAuthCookies, clearAuthCookies } from "../utils/authCookies.js";
 import { eq, and } from "drizzle-orm";
 import { emailService } from "../services/emailService.js";
+import { FaceBiometricService, normalizeFaceProviderError } from "../services/faceBiometricService.js";
+
+const faceBiometricService = new FaceBiometricService();
 
 // Cooldown map for rate-limiting resend verification
 const resendCooldowns = new Map<string, number>();
@@ -195,6 +198,44 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       success: false,
       message: "Login failed",
       error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
+export const faceLogin = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { organizationEmail, image } = req.body;
+    const { user, confidence } = await faceBiometricService.loginWithFace(image, organizationEmail);
+
+    const tokens = generateTokens({
+      userId: user.id,
+      email: user.email,
+      type: user.type,
+      roleId: user.roleId,
+    });
+
+    setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
+
+    const subscription = await subscriptionService.getSubscriptionSummary(user.id);
+    const { password: _, ...userWithoutPassword } = user;
+
+    res.status(200).json({
+      success: true,
+      message: "Face login successful",
+      data: {
+        user: userWithoutPassword,
+        tokens,
+        subscription,
+        confidence,
+      },
+    });
+  } catch (error) {
+    const normalized = normalizeFaceProviderError(error) as Error & { statusCode?: number; code?: string };
+    const statusCode = normalized.statusCode ?? 500;
+    res.status(statusCode).json({
+      success: false,
+      message: normalized.message || "Face login failed",
+      ...(normalized.code ? { code: normalized.code } : {}),
     });
   }
 };
@@ -795,4 +836,3 @@ export const resendOtp = async (req: Request, res: Response): Promise<void> => {
     });
   }
 };
-

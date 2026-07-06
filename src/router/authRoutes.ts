@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   register,
   login,
+  faceLogin,
   logout,
   refreshToken,
   getProfile,
@@ -18,6 +19,7 @@ const authRouter = Router();
 // Public routes
 authRouter.post("/register", register);
 authRouter.post("/login", login);
+authRouter.post("/face-login", faceLogin);
 authRouter.post("/google", googleLogin);
 authRouter.post("/refresh-token", refreshToken);
 authRouter.get("/verify-email", verifyEmail);

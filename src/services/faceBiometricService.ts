@@ -1,7 +1,7 @@
 import bcrypt from "bcrypt";
-import { eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { db } from "../db/connection.js";
-import { Employee, employeeFaceBiometric, users } from "../db/schema.js";
+import { Employee, employeeFaceBiometric, organizations, users } from "../db/schema.js";
 import { AttendanceService } from "./attendanceServices.js";
 import { deleteLocalUpload, saveDataUrlToLocal } from "./uploadService.js";
 
@@ -45,6 +45,17 @@ function validateImage(value: unknown): string {
   return value;
 }
 
+function validateOrganizationEmail(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) {
+    throw httpError("Organization email is required", 400, "ORGANIZATION_EMAIL_REQUIRED");
+  }
+  const normalized = value.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+    throw httpError("Organization email is invalid", 400, "INVALID_ORGANIZATION_EMAIL");
+  }
+  return normalized;
+}
+
 async function requireEmployee(user: typeof users.$inferSelect) {
   if (user.type !== "employee") {
     throw httpError("Only employees can use face attendance", 403, "EMPLOYEE_ONLY");
@@ -57,6 +68,21 @@ async function requireEmployee(user: typeof users.$inferSelect) {
   if (!employee) throw httpError("Employee record not found", 404, "EMPLOYEE_NOT_FOUND");
 }
 
+async function getEmployeeOwnership(employeeId: number) {
+  const [employee] = await db
+    .select({
+      userId: Employee.userId,
+      adminId: Employee.adminId,
+      organizationId: users.organizationId,
+    })
+    .from(Employee)
+    .innerJoin(users, eq(users.id, Employee.userId))
+    .where(eq(Employee.userId, employeeId))
+    .limit(1);
+  if (!employee) throw httpError("Employee record not found", 404, "EMPLOYEE_NOT_FOUND");
+  return employee;
+}
+
 async function getProfile(employeeId: number) {
   const [profile] = await db
     .select()
@@ -64,6 +90,35 @@ async function getProfile(employeeId: number) {
     .where(eq(employeeFaceBiometric.employeeId, employeeId))
     .limit(1);
   return profile;
+}
+
+async function getProfilesForOrganization(organizationId: number, excludedEmployeeId: number) {
+  return db
+    .select({
+      employeeId: employeeFaceBiometric.employeeId,
+      embedding: employeeFaceBiometric.embedding,
+    })
+    .from(employeeFaceBiometric)
+    .innerJoin(users, eq(users.id, employeeFaceBiometric.employeeId))
+    .where(and(eq(users.organizationId, organizationId), ne(employeeFaceBiometric.employeeId, excludedEmployeeId)));
+}
+
+async function getProfilesForOrganizationLogin(organizationId: number) {
+  return db
+    .select({
+      user: users,
+      employeeId: employeeFaceBiometric.employeeId,
+      embedding: employeeFaceBiometric.embedding,
+    })
+    .from(employeeFaceBiometric)
+    .innerJoin(users, eq(users.id, employeeFaceBiometric.employeeId))
+    .where(
+      and(
+        eq(users.organizationId, organizationId),
+        eq(users.type, "employee"),
+        eq(users.isDeleted, false),
+      ),
+    );
 }
 
 async function extractEmbedding(image: unknown): Promise<number[]> {
@@ -124,6 +179,22 @@ function cosineSimilarity(left: number[], right: number[]) {
 export class FaceBiometricService {
   private attendance = new AttendanceService();
 
+  private async assertFaceIsUniqueWithinOrganization(employeeId: number, embedding: number[]) {
+    const employee = await getEmployeeOwnership(employeeId);
+    if (!employee.organizationId) {
+      throw httpError("Employee organization not found", 404, "ORGANIZATION_NOT_FOUND");
+    }
+    const profiles = await getProfilesForOrganization(employee.organizationId, employeeId);
+    const duplicate = profiles.find((profile) => cosineSimilarity(profile.embedding, embedding) >= matchThreshold);
+    if (duplicate) {
+      throw httpError(
+        "This face is already registered with another employee.",
+        409,
+        "FACE_ALREADY_REGISTERED",
+      );
+    }
+  }
+
   async status(user: typeof users.$inferSelect) {
     await requireEmployee(user);
     const profile = await getProfile(user.id);
@@ -137,6 +208,7 @@ export class FaceBiometricService {
   async register(image: unknown, user: typeof users.$inferSelect) {
     await requireEmployee(user);
     const embedding = await extractEmbedding(image);
+    await this.assertFaceIsUniqueWithinOrganization(user.id, embedding);
     await db
       .insert(employeeFaceBiometric)
       .values({ employeeId: user.id, embedding, provider: "opencv_sface" })
@@ -145,6 +217,43 @@ export class FaceBiometricService {
         set: { embedding, provider: "opencv_sface", updatedAt: new Date() },
       });
     return this.status(user);
+  }
+
+  async loginWithFace(image: unknown, organizationEmail: unknown) {
+    const normalizedOrganizationEmail = validateOrganizationEmail(organizationEmail);
+    const [organization] = await db
+      .select({ id: organizations.id })
+      .from(organizations)
+      .where(eq(organizations.organizationEmail, normalizedOrganizationEmail))
+      .limit(1);
+
+    if (!organization) {
+      throw httpError("Organization not found", 404, "ORGANIZATION_NOT_FOUND");
+    }
+
+    const probe = await extractEmbedding(image);
+    const profiles = await getProfilesForOrganizationLogin(organization.id);
+    const matches = profiles
+      .map((profile) => ({
+        user: profile.user,
+        similarity: cosineSimilarity(profile.embedding, probe),
+      }))
+      .filter((profile) => profile.similarity >= matchThreshold)
+      .sort((left, right) => right.similarity - left.similarity);
+
+    const bestMatch = matches[0];
+    if (!bestMatch) {
+      throw httpError("Face did not match any registered employee in this organization", 401, "FACE_LOGIN_FAILED");
+    }
+
+    if (!bestMatch.user.active) {
+      throw httpError("Account is inactive. Please contact administrator.", 403, "ACCOUNT_INACTIVE");
+    }
+
+    return {
+      user: bestMatch.user,
+      confidence: Number((bestMatch.similarity * 100).toFixed(2)),
+    };
   }
 
   async verify(image: unknown, user: typeof users.$inferSelect) {
