@@ -1,5 +1,5 @@
 import bcrypt from "bcrypt";
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, ilike, ne } from "drizzle-orm";
 import { db } from "../db/connection.js";
 import { Employee, employeeFaceBiometric, organizations, users } from "../db/schema.js";
 import { AttendanceService } from "./attendanceServices.js";
@@ -10,6 +10,10 @@ const configuredThreshold = Number(process.env.FACE_MATCH_THRESHOLD || 0.42);
 const matchThreshold = Number.isFinite(configuredThreshold)
   ? Math.min(0.95, Math.max(0.3, configuredThreshold))
   : 0.42;
+const configuredLoginThreshold = Number(process.env.FACE_LOGIN_THRESHOLD || 0.38);
+const loginMatchThreshold = Number.isFinite(configuredLoginThreshold)
+  ? Math.min(0.95, Math.max(0.25, configuredLoginThreshold))
+  : 0.38;
 
 function httpError(message: string, statusCode: number, code?: string) {
   return Object.assign(new Error(message), { statusCode, code });
@@ -121,6 +125,36 @@ async function getProfilesForOrganizationLogin(organizationId: number) {
     );
 }
 
+async function resolveOrganizationIdFromLoginHint(value: unknown) {
+  const normalized = validateOrganizationEmail(value);
+
+  const [organizationByEmail] = await db
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(eq(organizations.organizationEmail, normalized))
+    .limit(1);
+  if (organizationByEmail) return organizationByEmail.id;
+
+  const [userMatch] = await db
+    .select({ organizationId: users.organizationId })
+    .from(users)
+    .where(and(eq(users.email, normalized), eq(users.isDeleted, false)))
+    .limit(1);
+  if (userMatch?.organizationId) return userMatch.organizationId;
+
+  const domain = normalized.split("@")[1];
+  if (domain) {
+    const [organizationByDomain] = await db
+      .select({ id: organizations.id })
+      .from(organizations)
+      .where(ilike(organizations.organizationEmail, `%@${domain}`))
+      .limit(1);
+    if (organizationByDomain) return organizationByDomain.id;
+  }
+
+  throw httpError("Organization not found", 404, "ORGANIZATION_NOT_FOUND");
+}
+
 async function extractEmbedding(image: unknown): Promise<number[]> {
   const serviceUrl = process.env.FACE_RECOGNITION_SERVICE_URL?.replace(/\/$/, "");
   if (!serviceUrl) {
@@ -220,25 +254,15 @@ export class FaceBiometricService {
   }
 
   async loginWithFace(image: unknown, organizationEmail: unknown) {
-    const normalizedOrganizationEmail = validateOrganizationEmail(organizationEmail);
-    const [organization] = await db
-      .select({ id: organizations.id })
-      .from(organizations)
-      .where(eq(organizations.organizationEmail, normalizedOrganizationEmail))
-      .limit(1);
-
-    if (!organization) {
-      throw httpError("Organization not found", 404, "ORGANIZATION_NOT_FOUND");
-    }
-
+    const organizationId = await resolveOrganizationIdFromLoginHint(organizationEmail);
     const probe = await extractEmbedding(image);
-    const profiles = await getProfilesForOrganizationLogin(organization.id);
+    const profiles = await getProfilesForOrganizationLogin(organizationId);
     const matches = profiles
       .map((profile) => ({
         user: profile.user,
         similarity: cosineSimilarity(profile.embedding, probe),
       }))
-      .filter((profile) => profile.similarity >= matchThreshold)
+      .filter((profile) => profile.similarity >= loginMatchThreshold)
       .sort((left, right) => right.similarity - left.similarity);
 
     const bestMatch = matches[0];
