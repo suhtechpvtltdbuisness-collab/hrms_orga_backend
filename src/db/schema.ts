@@ -959,6 +959,69 @@ export const payrollAccounting = pgTable("payroll_accounting", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const chartAccount = pgTable("chart_account", {
+  id: serial("id").primaryKey(),
+  adminId: integer("admin_id")
+    .notNull()
+    .references(() => users.id),
+  accountName: varchar("account_name", { length: 255 }).notNull(),
+  accountType: varchar("account_type", { length: 50 }).notNull(),
+  parentAccount: varchar("parent_account", { length: 255 }),
+  currency: varchar("currency", { length: 20 }),
+  openingBalance: decimal("opening_balance", { precision: 15, scale: 2 }).default("0").notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const bankCashAccount = pgTable("bank_cash_account", {
+  id: serial("id").primaryKey(),
+  adminId: integer("admin_id")
+    .notNull()
+    .references(() => users.id),
+  accountType: varchar("account_type", { length: 20 }).notNull(),
+  bankName: varchar("bank_name", { length: 255 }).notNull(),
+  accountNumber: varchar("account_number", { length: 20 }).notNull(),
+  openingBalance: decimal("opening_balance", { precision: 15, scale: 2 }).default("0").notNull(),
+  linkedGlAccountId: integer("linked_gl_account_id").references(() => chartAccount.id),
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const journalEntry = pgTable("journal_entry", {
+  id: serial("id").primaryKey(),
+  adminId: integer("admin_id")
+    .notNull()
+    .references(() => users.id),
+  entryDate: varchar("entry_date", { length: 50 }).notNull(),
+  remarks: text("remarks").notNull(),
+  totalDebit: decimal("total_debit", { precision: 15, scale: 2 }).default("0").notNull(),
+  totalCredit: decimal("total_credit", { precision: 15, scale: 2 }).default("0").notNull(),
+  balance: decimal("balance", { precision: 15, scale: 2 }).default("0").notNull(),
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const journalEntryLine = pgTable("journal_entry_line", {
+  id: serial("id").primaryKey(),
+  journalEntryId: integer("journal_entry_id")
+    .notNull()
+    .references(() => journalEntry.id, { onDelete: "cascade" }),
+  accountId: integer("account_id")
+    .notNull()
+    .references(() => chartAccount.id),
+  debit: decimal("debit", { precision: 15, scale: 2 }).default("0").notNull(),
+  credit: decimal("credit", { precision: 15, scale: 2 }).default("0").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Training and Development Table
 export const trainingAndDevelopment = pgTable("training_and_development", {
   id: serial("id").primaryKey(),

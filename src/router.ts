@@ -24,6 +24,7 @@ import organizationRouter from "./router/organizationRouter.js";
 import hiringRouter from "./router/hiringRouter.js";
 import dashboardRouter from "./router/dashboardRouter.js";
 import faceBiometricRouter from "./router/faceBiometricRouter.js";
+import accountsRouter from "./router/accountsRouter.js";
 
 const router = Router();
 
@@ -59,5 +60,6 @@ router.use("/organizations", organizationRouter);
 router.use("/hiring", hiringRouter);
 router.use("/dashboard", dashboardRouter);
 router.use("/employee/face", faceBiometricRouter);
+router.use("/accounts", accountsRouter);
 
 export default router;
