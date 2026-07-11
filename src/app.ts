@@ -18,22 +18,27 @@ const allowedOrigins = [
   ...(process.env.CORS_ORIGINS?.split(",").map((o) => o.trim()) || []),
 ];
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      if (
-        !origin ||
-        allowedOrigins.includes(origin) ||
-        process.env.NODE_ENV !== "production"
-      ) {
-        callback(null, true);
-        return;
-      }
-      callback(new Error(`Origin ${origin} not allowed by CORS`));
-    },
-    credentials: true,
-  }),
-);
+const corsOptions: cors.CorsOptions = {
+  origin: (origin, callback) => {
+    if (
+      !origin ||
+      allowedOrigins.includes(origin) ||
+      process.env.NODE_ENV !== "production"
+    ) {
+      callback(null, true);
+      return;
+    }
+    callback(null, false);
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  maxAge: 86400,
+  optionsSuccessStatus: 204,
+};
+
+app.use(cors(corsOptions));
+app.options(/.*/, cors(corsOptions));
 
 app.use(cookieParser());
 
