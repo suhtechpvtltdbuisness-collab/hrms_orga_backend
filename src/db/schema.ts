@@ -1338,3 +1338,97 @@ export const organizationsRelations = relations(organizations, ({ one }) => ({
     references: [users.id],
   }),
 }));
+
+// ==========================
+// Sales CRM Tables
+// ==========================
+
+// Leads, Clients, Opportunities and Pipeline Deals share the same shape,
+// differentiated by recordType.
+export const salesRecord = pgTable("sales_record", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id")
+    .notNull()
+    .references((): any => organizations.id),
+  recordType: varchar("record_type", { length: 20 }).notNull(), // lead | client | opportunity | deal
+  name: varchar("name", { length: 255 }).notNull(),
+  company: varchar("company", { length: 255 }),
+  status: varchar("status", { length: 50 }).default("New").notNull(), // New/Contacted/Qualified/Proposal/Negotiation/Won/Lost/Active/Expansion
+  owner: varchar("owner", { length: 255 }),
+  value: decimal("value", { precision: 14, scale: 2 }).default("0").notNull(),
+  health: integer("health").default(50).notNull(),
+  source: varchar("source", { length: 100 }), // Website | Referral | Campaign | Partner | Other
+  nextAction: varchar("next_action", { length: 255 }),
+  followUpAt: timestamp("follow_up_at"),
+  notes: text("notes"),
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Activity feed shown on the Sales overview.
+export const salesActivity = pgTable("sales_activity", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id")
+    .notNull()
+    .references((): any => organizations.id),
+  description: varchar("description", { length: 500 }).notNull(),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Knowledge Hub articles.
+export const salesKnowledge = pgTable("sales_knowledge", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id")
+    .notNull()
+    .references((): any => organizations.id),
+  title: varchar("title", { length: 255 }).notNull(),
+  category: varchar("category", { length: 100 }).default("Services").notNull(),
+  owner: varchar("owner", { length: 255 }),
+  content: text("content"),
+  views: integer("views").default(0).notNull(),
+  confidence: integer("confidence").default(90).notNull(),
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Products & Services catalog.
+export const salesProduct = pgTable("sales_product", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id")
+    .notNull()
+    .references((): any => organizations.id),
+  name: varchar("name", { length: 255 }).notNull(),
+  category: varchar("category", { length: 100 }).default("Subscription").notNull(), // Subscription | Services
+  status: varchar("status", { length: 20 }).default("Active").notNull(),
+  team: varchar("team", { length: 100 }),
+  priceLabel: varchar("price_label", { length: 100 }),
+  note: varchar("note", { length: 255 }),
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Quotations, contracts, proposals, case studies, battlecards, objection playbooks.
+export const salesDocument = pgTable("sales_document", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id")
+    .notNull()
+    .references((): any => organizations.id),
+  docType: varchar("doc_type", { length: 50 }).notNull(), // proposal | quotation | contract | case-study | battlecard | objection-playbook
+  title: varchar("title", { length: 255 }).notNull(),
+  clientName: varchar("client_name", { length: 255 }),
+  status: varchar("status", { length: 50 }).default("Draft").notNull(),
+  owner: varchar("owner", { length: 255 }),
+  amount: decimal("amount", { precision: 14, scale: 2 }),
+  notes: text("notes"),
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
