@@ -1,19 +1,22 @@
 import SalesRepository from "../repository/sales.repo.js";
 import { users } from "../db/schema.js";
 
-const RECORD_TYPES = ["lead", "client", "opportunity", "deal"] as const;
-const RECORD_STATUSES = [
-  "New",
-  "Contacted",
-  "Qualified",
+const RECORD_TYPES = ["lead", "client", "opportunity"] as const;
+const LEAD_STAGES = ["New", "Contacted", "Qualified", "Lost"] as const;
+const LEAD_CONVERSION_STATUSES = ["Not Converted", "Converted", "Closed Lost"] as const;
+const OPPORTUNITY_STAGES = [
   "Discovery",
+  "Qualified",
   "Proposal",
   "Negotiation",
-  "Won",
-  "Lost",
-  "Active",
-  "Expansion",
+  "Closed Won",
+  "Closed Lost",
+  "Pending Activation",
 ] as const;
+const PIPELINE_STAGES = ["Discovery", "Qualified", "Proposal", "Negotiation"] as const;
+const CLIENT_LIFECYCLES = ["Onboarding", "Active", "Renewed", "Churned"] as const;
+const CLIENT_RENEWAL_STATUSES = ["On Track", "At Risk", "Renewal Due", "Churned"] as const;
+const LOSS_REASONS = ["Price", "Timeline", "Competitor", "No decision", "Other"] as const;
 const DOC_TYPES = [
   "proposal",
   "quotation",
@@ -22,7 +25,15 @@ const DOC_TYPES = [
   "battlecard",
   "objection-playbook",
 ] as const;
-const LEAD_SOURCES = ["Website", "Referral", "Campaign", "Partner", "Other"] as const;
+const LEAD_SOURCES = [
+  "Website",
+  "Referral",
+  "LinkedIn",
+  "Cold outreach",
+  "Event",
+  "Partner",
+  "Other",
+] as const;
 
 type CurrentUser = typeof users.$inferSelect;
 
@@ -40,7 +51,22 @@ class SalesServices {
     return orgId;
   }
 
-  private validateRecordData(data: any, isUpdate = false) {
+  private validateStatusForType(recordType: string, status: string) {
+    if (recordType === "lead" && !LEAD_STAGES.includes(status as any)) {
+      throw new Error(`Lead stage must be one of: ${LEAD_STAGES.join(", ")}`);
+    }
+    if (recordType === "opportunity" && !OPPORTUNITY_STAGES.includes(status as any)) {
+      throw new Error(`Opportunity stage must be one of: ${OPPORTUNITY_STAGES.join(", ")}`);
+    }
+    if (recordType === "client" && status) {
+      if (!CLIENT_LIFECYCLES.includes(status as any)) {
+        throw new Error(`Client lifecycle must be one of: ${CLIENT_LIFECYCLES.join(", ")}`);
+      }
+    }
+  }
+
+  private validateRecordData(data: any, isUpdate = false, recordType?: string) {
+    const type = recordType || data.recordType;
     if (!isUpdate || data.recordType !== undefined) {
       if (!data.recordType || !RECORD_TYPES.includes(data.recordType)) {
         throw new Error(`recordType must be one of: ${RECORD_TYPES.join(", ")}`);
@@ -54,9 +80,17 @@ class SalesServices {
         throw new Error("Name must not exceed 255 characters");
       }
     }
-    if (data.status !== undefined && data.status !== null && data.status !== "") {
-      if (!RECORD_STATUSES.includes(data.status)) {
-        throw new Error(`Status must be one of: ${RECORD_STATUSES.join(", ")}`);
+    if (data.status !== undefined && data.status !== null && data.status !== "" && type) {
+      this.validateStatusForType(type, data.status);
+    }
+    if (data.renewalStatus !== undefined && data.renewalStatus !== null && data.renewalStatus !== "") {
+      if (!CLIENT_RENEWAL_STATUSES.includes(data.renewalStatus)) {
+        throw new Error(`Renewal status must be one of: ${CLIENT_RENEWAL_STATUSES.join(", ")}`);
+      }
+    }
+    if (data.lossReason !== undefined && data.lossReason !== null && data.lossReason !== "") {
+      if (!LOSS_REASONS.includes(data.lossReason)) {
+        throw new Error(`Loss reason must be one of: ${LOSS_REASONS.join(", ")}`);
       }
     }
     if (data.value !== undefined && data.value !== null && data.value !== "") {
@@ -72,8 +106,9 @@ class SalesServices {
       }
     }
     if (data.source !== undefined && data.source !== null && data.source !== "") {
-      if (!LEAD_SOURCES.includes(data.source)) {
-        throw new Error(`Source must be one of: ${LEAD_SOURCES.join(", ")}`);
+      const source = String(data.source).trim();
+      if (source.length > 100) {
+        throw new Error("Source must not exceed 100 characters");
       }
     }
     if (data.followUpAt !== undefined && data.followUpAt !== null && data.followUpAt !== "") {
@@ -83,11 +118,40 @@ class SalesServices {
     }
   }
 
+  private sanitizeMetadata(raw: unknown): Record<string, unknown> | null {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      return null;
+    }
+    const cleaned: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+      if (value === undefined || value === null || value === "") continue;
+      cleaned[key] = value;
+    }
+    return Object.keys(cleaned).length ? cleaned : null;
+  }
+
   private defaultStatusFor(recordType: string) {
-    if (recordType === "deal") return "Discovery";
-    if (recordType === "client") return "Active";
-    if (recordType === "opportunity") return "Proposal";
+    if (recordType === "opportunity") return "Discovery";
+    if (recordType === "client") return "Onboarding";
     return "New";
+  }
+
+  private formatRecord(record: any) {
+    return {
+      ...record,
+      value: Number(record.value),
+      metadata: record.metadata || {},
+      conversionStatus: record.conversionStatus || (record.recordType === "lead" ? "Not Converted" : null),
+    };
+  }
+
+  private async logRecordActivity(
+    orgId: number,
+    recordId: number | null,
+    description: string,
+    userId?: number,
+  ) {
+    await this.salesRepo.logActivity(orgId, description, userId, recordId ?? undefined);
   }
 
   // ---------- Records ----------
@@ -96,7 +160,7 @@ class SalesServices {
     const orgId = this.getOrgId(currentUser);
     this.validateRecordData(data);
 
-    const recordData = {
+    const recordData: any = {
       organizationId: orgId,
       recordType: data.recordType,
       name: String(data.name).trim(),
@@ -105,24 +169,38 @@ class SalesServices {
       owner: data.owner ? String(data.owner).trim() : currentUser.name,
       value: data.value !== undefined && data.value !== null && data.value !== "" ? String(Number(data.value)) : "0",
       health: data.health !== undefined && data.health !== null && data.health !== "" ? Number(data.health) : 50,
-      source: data.source || null,
+      source: data.source ? String(data.source).trim() : null,
       nextAction: data.nextAction ? String(data.nextAction).trim() : null,
       followUpAt: data.followUpAt ? new Date(data.followUpAt) : null,
       notes: data.notes ? String(data.notes).trim() : null,
+      metadata: this.sanitizeMetadata(data.metadata),
       createdBy: currentUser.id,
     };
 
+    if (data.recordType === "lead") {
+      recordData.conversionStatus = "Not Converted";
+      recordData.aiLeadScore = data.aiLeadScore !== undefined ? Number(data.aiLeadScore) : null;
+    }
+
+    if (data.recordType === "client") {
+      recordData.clientLifecycle = data.clientLifecycle || "Onboarding";
+      recordData.renewalStatus = data.renewalStatus || "On Track";
+      recordData.clientSource = data.clientSource || "direct";
+      recordData.status = recordData.clientLifecycle;
+    }
+
     const result = await this.salesRepo.createRecord(recordData);
-    await this.salesRepo.logActivity(
+    await this.logRecordActivity(
       orgId,
-      `${result.name} added as new ${result.recordType} (${result.status})`,
+      result.id,
+      `${result.name} added as new ${result.recordType}`,
       currentUser.id,
     );
 
     return {
       message: `successfully created sales ${result.recordType}`,
       success: true,
-      data: result,
+      data: this.formatRecord(result),
     };
   }
 
@@ -167,7 +245,7 @@ class SalesServices {
       message: "successfully fetched sales records",
       success: true,
       data: {
-        records,
+        records: records.map((record) => this.formatRecord(record)),
         total,
         page,
         limit,
@@ -185,7 +263,7 @@ class SalesServices {
     return {
       message: "successfully fetched sales record",
       success: true,
-      data: record,
+      data: this.formatRecord(record),
     };
   }
 
@@ -196,12 +274,15 @@ class SalesServices {
       throw new Error("Sales record not found");
     }
 
-    this.validateRecordData(data, true);
+    if (existing.isReadOnly) {
+      throw new Error("This record is read-only after conversion and cannot be edited");
+    }
+
+    this.validateRecordData(data, true, existing.recordType);
 
     const updateData: any = {};
     if (data.name !== undefined) updateData.name = String(data.name).trim();
     if (data.company !== undefined) updateData.company = data.company ? String(data.company).trim() : null;
-    if (data.status !== undefined && data.status !== "") updateData.status = data.status;
     if (data.owner !== undefined) updateData.owner = data.owner ? String(data.owner).trim() : null;
     if (data.value !== undefined && data.value !== "") updateData.value = String(Number(data.value));
     if (data.health !== undefined && data.health !== "") updateData.health = Number(data.health);
@@ -209,12 +290,67 @@ class SalesServices {
     if (data.nextAction !== undefined) updateData.nextAction = data.nextAction ? String(data.nextAction).trim() : null;
     if (data.followUpAt !== undefined) updateData.followUpAt = data.followUpAt ? new Date(data.followUpAt) : null;
     if (data.notes !== undefined) updateData.notes = data.notes ? String(data.notes).trim() : null;
+    if (data.metadata !== undefined) updateData.metadata = this.sanitizeMetadata(data.metadata);
+    if (data.renewalStatus !== undefined) updateData.renewalStatus = data.renewalStatus;
+    if (data.clientLifecycle !== undefined) {
+      updateData.clientLifecycle = data.clientLifecycle;
+      updateData.status = data.clientLifecycle;
+    }
+
+    const newStatus = data.status !== undefined && data.status !== "" ? data.status : undefined;
+
+    if (newStatus && newStatus !== existing.status) {
+      if (existing.recordType === "lead") {
+        if (newStatus === "Lost") {
+          if (!data.lossReason) {
+            throw new Error("Loss reason is required when marking a lead as Lost");
+          }
+          updateData.status = "Lost";
+          updateData.conversionStatus = "Closed Lost";
+          updateData.closeLostAt = new Date();
+          updateData.lossReason = data.lossReason;
+        } else {
+          updateData.status = newStatus;
+        }
+      } else if (existing.recordType === "opportunity") {
+        if (newStatus === "Proposal") {
+          const quotations = await this.salesRepo.getDocumentsByOpportunity(orgId, id, "quotation");
+          if (!quotations.length) {
+            throw new Error(
+              "Proposal stage requires at least one linked quotation. Create a quotation first.",
+            );
+          }
+          updateData.status = newStatus;
+        } else if (newStatus === "Closed Won") {
+          const accepted = await this.salesRepo.getAcceptedQuotationForOpportunity(orgId, id);
+          if (!accepted) {
+            throw new Error(
+              "Closed Won requires an accepted quotation. Link a quotation and mark it Accepted before closing the deal.",
+            );
+          }
+          updateData.status = "Pending Activation";
+          updateData.wonAt = new Date();
+        } else if (newStatus === "Closed Lost") {
+          if (!data.lossReason) {
+            throw new Error("Loss reason is required when marking an opportunity as Closed Lost");
+          }
+          updateData.status = "Closed Lost";
+          updateData.closeLostAt = new Date();
+          updateData.lossReason = data.lossReason;
+        } else {
+          updateData.status = newStatus;
+        }
+      } else {
+        updateData.status = newStatus;
+      }
+    }
 
     const result = await this.salesRepo.updateRecord(id, updateData);
 
-    if (data.status && data.status !== existing.status) {
-      await this.salesRepo.logActivity(
+    if (newStatus && newStatus !== existing.status) {
+      await this.logRecordActivity(
         orgId,
+        id,
         `${result.name} moved to ${result.status}`,
         currentUser.id,
       );
@@ -223,7 +359,185 @@ class SalesServices {
     return {
       message: "successfully updated sales record",
       success: true,
-      data: result,
+      data: this.formatRecord(result),
+    };
+  }
+
+  async convertLeadToOpportunity(leadId: number, data: any, currentUser: CurrentUser) {
+    const orgId = this.getOrgId(currentUser);
+    const lead = await this.salesRepo.getRecordById(leadId, orgId);
+    if (!lead || lead.recordType !== "lead") {
+      throw new Error("Lead not found");
+    }
+    if (lead.conversionStatus === "Converted") {
+      throw new Error("This lead has already been converted");
+    }
+    if (lead.conversionStatus === "Closed Lost" || lead.status === "Lost") {
+      throw new Error("Lost leads cannot be converted");
+    }
+    if (lead.status !== "Qualified" && !data.force) {
+      throw new Error("Only Qualified leads can be converted. Move the lead to Qualified first.");
+    }
+
+    const leadMeta = (lead.metadata || {}) as Record<string, unknown>;
+    const contact = leadMeta.contact ? String(leadMeta.contact) : "";
+    const primaryContact = [lead.name, contact].filter(Boolean).join(" — ");
+
+    const opportunityData: any = {
+      organizationId: orgId,
+      recordType: "opportunity",
+      name: data.company?.trim() || lead.company || lead.name,
+      company: data.company?.trim() || lead.company,
+      status: data.stage || "Discovery",
+      owner: data.owner?.trim() || lead.owner || currentUser.name,
+      value:
+        data.value !== undefined && data.value !== ""
+          ? String(Number(data.value))
+          : String(Number(lead.value) || 0),
+      health: data.health !== undefined ? Number(data.health) : Number(lead.health) || 50,
+      source: lead.source,
+      followUpAt: data.followUpAt ? new Date(data.followUpAt) : lead.followUpAt,
+      notes: lead.notes,
+      metadata: this.sanitizeMetadata({
+        primaryContact: data.primaryContact?.trim() || primaryContact,
+        employees: leadMeta.employees,
+        modules: leadMeta.modules,
+        competitor: data.competitor,
+        winProbability: data.winProbability ?? lead.health ?? 50,
+        attribution: lead.source,
+      }),
+      sourceLeadId: lead.id,
+      createdBy: currentUser.id,
+    };
+
+    const opportunity = await this.salesRepo.createRecord(opportunityData);
+
+    const now = new Date();
+    await this.salesRepo.updateRecord(lead.id, {
+      conversionStatus: "Converted",
+      convertedAt: now,
+      isReadOnly: true,
+      linkedOpportunityId: opportunity.id,
+      status: lead.status === "Qualified" ? lead.status : "Qualified",
+    });
+
+    await this.logRecordActivity(
+      orgId,
+      lead.id,
+      `Lead converted to opportunity: ${opportunity.name}`,
+      currentUser.id,
+    );
+    await this.logRecordActivity(
+      orgId,
+      opportunity.id,
+      `Opportunity created from lead: ${lead.name}`,
+      currentUser.id,
+    );
+
+    return {
+      message: "successfully converted lead to opportunity",
+      success: true,
+      data: {
+        lead: this.formatRecord({ ...lead, conversionStatus: "Converted", convertedAt: now, isReadOnly: true, linkedOpportunityId: opportunity.id }),
+        opportunity: this.formatRecord(opportunity),
+      },
+    };
+  }
+
+  async activateClientFromOpportunity(opportunityId: number, data: any, currentUser: CurrentUser) {
+    const orgId = this.getOrgId(currentUser);
+    const opportunity = await this.salesRepo.getRecordById(opportunityId, orgId);
+    if (!opportunity || opportunity.recordType !== "opportunity") {
+      throw new Error("Opportunity not found");
+    }
+    if (opportunity.status !== "Pending Activation") {
+      throw new Error("Only opportunities in Pending Activation can be converted to clients");
+    }
+
+    const existingClient = await this.salesRepo.getClientByOpportunityId(orgId, opportunityId);
+    if (existingClient) {
+      return {
+        message: "client already activated for this opportunity",
+        success: true,
+        data: this.formatRecord(existingClient),
+      };
+    }
+
+    const oppMeta = (opportunity.metadata || {}) as Record<string, unknown>;
+    const acceptedQuote = await this.salesRepo.getAcceptedQuotationForOpportunity(orgId, opportunityId);
+    const monthlyRevenue =
+      data.monthlyRevenue !== undefined && data.monthlyRevenue !== ""
+        ? Number(data.monthlyRevenue)
+        : acceptedQuote?.amount
+          ? Number(acceptedQuote.amount) / 12
+          : Number(opportunity.value) / 12;
+
+    const clientData: any = {
+      organizationId: orgId,
+      recordType: "client",
+      name: String(oppMeta.primaryContact || opportunity.name).split(" — ")[0].trim(),
+      company: opportunity.company || opportunity.name,
+      status: "Onboarding",
+      clientLifecycle: "Onboarding",
+      renewalStatus: "On Track",
+      clientSource: "conversion",
+      owner: data.accountManager?.trim() || opportunity.owner || currentUser.name,
+      value: String(monthlyRevenue),
+      sourceOpportunityId: opportunity.id,
+      sourceLeadId: opportunity.sourceLeadId,
+      metadata: this.sanitizeMetadata({
+        email: oppMeta.email || oppMeta.contact,
+        phone: oppMeta.phone,
+        employees: oppMeta.employees,
+        industry: oppMeta.industry || data.industry,
+        plan: data.plan || acceptedQuote?.notes || oppMeta.plan,
+        contractStart: data.contractStart,
+        contractEnd: data.contractEnd,
+        gstin: data.gstin,
+        billingAddress: data.billingAddress,
+      }),
+      createdBy: currentUser.id,
+    };
+
+    const client = await this.salesRepo.createRecord(clientData);
+    const now = new Date();
+
+    await this.salesRepo.updateRecord(opportunity.id, {
+      status: "Closed Won",
+      activatedAt: now,
+    });
+
+    await this.logRecordActivity(
+      orgId,
+      opportunity.id,
+      `Client activated: ${client.company || client.name}`,
+      currentUser.id,
+    );
+    await this.logRecordActivity(
+      orgId,
+      client.id,
+      `Client created from opportunity (payment/contract confirmed)`,
+      currentUser.id,
+    );
+
+    return {
+      message: "successfully activated client from opportunity",
+      success: true,
+      data: this.formatRecord(client),
+    };
+  }
+
+  async checkDuplicates(data: any, currentUser: CurrentUser) {
+    const orgId = this.getOrgId(currentUser);
+    const company = data.company ? String(data.company).trim() : "";
+    const email = data.email ? String(data.email).trim() : "";
+    const domain = email.includes("@") ? email.split("@")[1]?.toLowerCase() : "";
+
+    const matches = await this.salesRepo.findDuplicateRecords(orgId, company, domain);
+    return {
+      message: "duplicate check complete",
+      success: true,
+      data: { matches: matches.map((r) => this.formatRecord(r)) },
     };
   }
 
@@ -254,8 +568,9 @@ class SalesServices {
       totalLeads,
       qualifiedLeads,
       lostLeads,
-      wonDeals,
-      lostDeals,
+      convertedLeads,
+      wonOpportunities,
+      lostOpportunities,
       opportunities,
       todayRevenue,
       monthRevenue,
@@ -263,10 +578,12 @@ class SalesServices {
       followUpRecords,
       revenueTrend,
       activities,
-      deals,
+      pipelineRecords,
       leads,
       clients,
       opportunityRows,
+      awaitingPayment,
+      idleLeads,
       knowledge,
       products,
       documents,
@@ -274,27 +591,39 @@ class SalesServices {
       this.salesRepo.countByTypeAndStatus(orgId, "lead"),
       this.salesRepo.countByTypeAndStatus(orgId, "lead", "Qualified"),
       this.salesRepo.countByTypeAndStatus(orgId, "lead", "Lost"),
-      this.salesRepo.sumDealValue(orgId, "Won"),
-      this.salesRepo.sumDealValue(orgId, "Lost"),
-      this.salesRepo.sumOpportunityValue(orgId),
-      this.salesRepo.sumDealValue(orgId, "Won", startOfToday),
-      this.salesRepo.sumDealValue(orgId, "Won", startOfMonth),
+      this.salesRepo.countByConversionStatus(orgId, "Converted"),
+      this.salesRepo.sumOpportunityValueByStatus(orgId, "Closed Won"),
+      this.salesRepo.sumOpportunityValueByStatus(orgId, "Closed Lost"),
+      this.salesRepo.sumOpenOpportunityValue(orgId),
+      this.salesRepo.sumOpportunityValueByStatus(orgId, "Closed Won", startOfToday),
+      this.salesRepo.sumOpportunityValueByStatus(orgId, "Closed Won", startOfMonth),
       this.salesRepo.getLeadSources(orgId),
       this.salesRepo.getUpcomingFollowUps(orgId),
       this.salesRepo.getWeeklyRevenueTrend(orgId),
       this.salesRepo.getRecentActivities(orgId),
-      this.salesRepo.getRecords(orgId, "deal", undefined, undefined, "desc", 50, 0),
+      this.salesRepo.getRecords(orgId, "opportunity", undefined, undefined, "desc", 50, 0),
       this.salesRepo.getRecords(orgId, "lead", undefined, undefined, "desc", 20, 0),
       this.salesRepo.getRecords(orgId, "client", undefined, undefined, "desc", 20, 0),
       this.salesRepo.getRecords(orgId, "opportunity", undefined, undefined, "desc", 20, 0),
+      this.salesRepo.getAwaitingPaymentOpportunities(orgId),
+      this.salesRepo.getIdleLeads(orgId, 7),
       this.salesRepo.getKnowledge(orgId),
       this.salesRepo.getProducts(orgId),
       this.salesRepo.getDocuments(orgId),
     ]);
 
-    const totalClosedDeals = wonDeals.count + lostDeals.count;
-    const conversionRate = totalClosedDeals > 0 ? (wonDeals.count / totalClosedDeals) * 100 : 0;
-    const averageDealSize = wonDeals.count > 0 ? wonDeals.total / wonDeals.count : 0;
+    const totalClosedOpportunities = wonOpportunities.count + lostOpportunities.count;
+    const winRate = totalClosedOpportunities > 0 ? (wonOpportunities.count / totalClosedOpportunities) * 100 : 0;
+    const leadToOppRate = totalLeads > 0 ? (convertedLeads / totalLeads) * 100 : 0;
+    const averageDealSize = wonOpportunities.count > 0 ? wonOpportunities.total / wonOpportunities.count : 0;
+
+    const openPipeline = pipelineRecords.filter((r) =>
+      PIPELINE_STAGES.includes(r.status as (typeof PIPELINE_STAGES)[number]),
+    );
+    const weightedForecast = openPipeline.reduce(
+      (sum, record) => sum + Number(record.value) * (Number(record.health) / 100),
+      0,
+    );
 
     const totalLeadSourceCount = leadSources.reduce((sum, item) => sum + item.count, 0);
 
@@ -307,6 +636,11 @@ class SalesServices {
       documentsByType[doc.docType].push(doc);
     }
 
+    const formattedPipeline = openPipeline.map((record) => this.formatRecord(record));
+    const formattedLeads = leads.map((record) => this.formatRecord(record));
+    const formattedClients = clients.map((record) => this.formatRecord(record));
+    const formattedOpportunities = opportunityRows.map((record) => this.formatRecord(record));
+
     return {
       message: "successfully fetched sales workspace",
       success: true,
@@ -318,10 +652,14 @@ class SalesServices {
           totalLeads,
           qualifiedLeads,
           lostLeads,
-          wonDeals: wonDeals.count,
+          convertedLeads,
+          leadToOpportunityRate: Number(leadToOppRate.toFixed(1)),
+          wonOpportunities: wonOpportunities.count,
           activeOpportunities: opportunities.count,
           opportunityValue: opportunities.total,
-          conversionRate: Number(conversionRate.toFixed(1)),
+          weightedForecast: Number(weightedForecast.toFixed(2)),
+          winRate: Number(winRate.toFixed(1)),
+          conversionRate: Number(winRate.toFixed(1)),
           averageDealSize: Number(averageDealSize.toFixed(2)),
         },
         revenueTrend,
@@ -338,11 +676,13 @@ class SalesServices {
           time: item.followUpAt,
           owner: item.owner,
         })),
-        deals,
+        awaitingPayment: awaitingPayment.map((item) => this.formatRecord(item)),
+        idleLeads: idleLeads.map((item) => this.formatRecord(item)),
+        pipeline: formattedPipeline,
         rows: {
-          leads,
-          clients,
-          opportunities: opportunityRows,
+          leads: formattedLeads,
+          clients: formattedClients,
+          opportunities: formattedOpportunities,
         },
         knowledge,
         products,
@@ -381,16 +721,16 @@ class SalesServices {
       this.salesRepo.countByTypeAndStatus(orgId, "lead"),
       this.salesRepo.countByTypeAndStatus(orgId, "lead", "Qualified"),
       this.salesRepo.countByTypeAndStatus(orgId, "lead", "Lost"),
-      this.salesRepo.sumDealValue(orgId, "Won"),
-      this.salesRepo.sumDealValue(orgId, "Lost"),
-      this.salesRepo.sumOpportunityValue(orgId),
-      this.salesRepo.sumDealValue(orgId, "Won", startOfToday),
-      this.salesRepo.sumDealValue(orgId, "Won", startOfMonth),
+      this.salesRepo.sumOpportunityValueByStatus(orgId, "Closed Won"),
+      this.salesRepo.sumOpportunityValueByStatus(orgId, "Closed Lost"),
+      this.salesRepo.sumOpenOpportunityValue(orgId),
+      this.salesRepo.sumOpportunityValueByStatus(orgId, "Closed Won", startOfToday),
+      this.salesRepo.sumOpportunityValueByStatus(orgId, "Closed Won", startOfMonth),
       this.salesRepo.getMonthlyRevenue(orgId),
       this.salesRepo.getSalesByOwner(orgId),
       this.salesRepo.getLeadSources(orgId),
       this.salesRepo.getUpcomingFollowUps(orgId, 10),
-      this.salesRepo.getRecords(orgId, "deal", undefined, undefined, "desc", 30, 0),
+      this.salesRepo.getRecords(orgId, "opportunity", undefined, undefined, "desc", 30, 0),
       this.salesRepo.getRecords(orgId, "lead", undefined, undefined, "desc", 30, 0),
       this.salesRepo.getRecords(orgId, "client", undefined, undefined, "desc", 30, 0),
       this.salesRepo.getRecords(orgId, "opportunity", undefined, undefined, "desc", 30, 0),
@@ -424,11 +764,11 @@ class SalesServices {
         opportunities: 0,
       });
       summary.totalRecords += row.count;
-      if (row.recordType === "deal") {
-        if (row.status === "Won") {
+      if (row.recordType === "opportunity") {
+        if (row.status === "Closed Won") {
           summary.wonDeals += row.count;
           summary.wonValueINR += Number(row.totalValue);
-        } else if (row.status !== "Lost") {
+        } else if (!["Closed Lost", "Pending Activation"].includes(row.status)) {
           summary.openDeals += row.count;
           summary.openDealValueINR += Number(row.totalValue);
         }
@@ -436,8 +776,6 @@ class SalesServices {
         summary.leads += row.count;
       } else if (row.recordType === "client") {
         summary.clients += row.count;
-      } else if (row.recordType === "opportunity") {
-        summary.opportunities += row.count;
       }
     }
 
@@ -464,7 +802,7 @@ class SalesServices {
         owner: item.owner,
         followUpAt: item.followUpAt,
       })),
-      deals: deals.map(slimRecord),
+      pipeline: deals.map(slimRecord),
       leads: leads.map(slimRecord),
       clients: clients.map(slimRecord),
       opportunities: opportunityRows.map(slimRecord),
@@ -666,6 +1004,7 @@ class SalesServices {
     const result = await this.salesRepo.createDocument({
       organizationId: orgId,
       docType: data.docType,
+      opportunityId: data.opportunityId ? Number(data.opportunityId) : null,
       title: String(data.title).trim(),
       clientName: data.clientName ? String(data.clientName).trim() : null,
       status: data.status || "Draft",

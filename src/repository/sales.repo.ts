@@ -136,10 +136,10 @@ class SalesRepository {
     return result[0]?.count ?? 0;
   }
 
-  async sumDealValue(organizationId: number, status?: string, from?: Date, to?: Date) {
+  async sumOpportunityValueByStatus(organizationId: number, status?: string, from?: Date, to?: Date) {
     let whereClause = and(
       eq(salesRecord.organizationId, organizationId),
-      eq(salesRecord.recordType, "deal"),
+      eq(salesRecord.recordType, "opportunity"),
       eq(salesRecord.isDeleted, false),
     );
     if (status) {
@@ -164,7 +164,13 @@ class SalesRepository {
     };
   }
 
-  async sumOpportunityValue(organizationId: number) {
+  /** @deprecated use sumOpportunityValueByStatus */
+  async sumDealValue(organizationId: number, status?: string, from?: Date, to?: Date) {
+    const mapped = status === "Won" ? "Closed Won" : status === "Lost" ? "Closed Lost" : status;
+    return this.sumOpportunityValueByStatus(organizationId, mapped, from, to);
+  }
+
+  async sumOpenOpportunityValue(organizationId: number) {
     const result = await this.db
       .select({
         total: sql<string>`coalesce(sum(${salesRecord.value}), 0)`,
@@ -176,12 +182,132 @@ class SalesRepository {
           eq(salesRecord.organizationId, organizationId),
           eq(salesRecord.recordType, "opportunity"),
           eq(salesRecord.isDeleted, false),
+          sql`${salesRecord.status} IN ('Discovery', 'Qualified', 'Proposal', 'Negotiation')`,
         ),
       );
     return {
       total: Number(result[0]?.total ?? 0),
       count: result[0]?.count ?? 0,
     };
+  }
+
+  async countByConversionStatus(organizationId: number, conversionStatus: string) {
+    const result = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(salesRecord)
+      .where(
+        and(
+          eq(salesRecord.organizationId, organizationId),
+          eq(salesRecord.recordType, "lead"),
+          eq(salesRecord.conversionStatus, conversionStatus),
+          eq(salesRecord.isDeleted, false),
+        ),
+      );
+    return result[0]?.count ?? 0;
+  }
+
+  async getAwaitingPaymentOpportunities(organizationId: number) {
+    return await this.db
+      .select()
+      .from(salesRecord)
+      .where(
+        and(
+          eq(salesRecord.organizationId, organizationId),
+          eq(salesRecord.recordType, "opportunity"),
+          eq(salesRecord.status, "Pending Activation"),
+          eq(salesRecord.isDeleted, false),
+        ),
+      )
+      .orderBy(desc(salesRecord.wonAt));
+  }
+
+  async getIdleLeads(organizationId: number, idleDays = 7) {
+    return await this.db
+      .select()
+      .from(salesRecord)
+      .where(
+        and(
+          eq(salesRecord.organizationId, organizationId),
+          eq(salesRecord.recordType, "lead"),
+          eq(salesRecord.conversionStatus, "Not Converted"),
+          eq(salesRecord.isDeleted, false),
+          sql`${salesRecord.updatedAt} < now() - (${idleDays} * interval '1 day')`,
+        ),
+      )
+      .orderBy(asc(salesRecord.updatedAt))
+      .limit(20);
+  }
+
+  async getClientByOpportunityId(organizationId: number, opportunityId: number) {
+    const result = await this.db
+      .select()
+      .from(salesRecord)
+      .where(
+        and(
+          eq(salesRecord.organizationId, organizationId),
+          eq(salesRecord.recordType, "client"),
+          eq(salesRecord.sourceOpportunityId, opportunityId),
+          eq(salesRecord.isDeleted, false),
+        ),
+      )
+      .limit(1);
+    return (result as any)[0];
+  }
+
+  async findDuplicateRecords(organizationId: number, company?: string, emailDomain?: string) {
+    const conditions = [];
+    if (company) {
+      conditions.push(ilike(salesRecord.company, company));
+    }
+    if (emailDomain) {
+      conditions.push(sql`${salesRecord.metadata}->>'email' ILIKE ${`%@${emailDomain}`}`);
+    }
+    if (!conditions.length) return [];
+
+    return await this.db
+      .select()
+      .from(salesRecord)
+      .where(
+        and(
+          eq(salesRecord.organizationId, organizationId),
+          eq(salesRecord.isDeleted, false),
+          or(...conditions),
+        ),
+      )
+      .limit(5);
+  }
+
+  async getDocumentsByOpportunity(organizationId: number, opportunityId: number, docType?: string) {
+    let whereClause = and(
+      eq(salesDocument.organizationId, organizationId),
+      eq(salesDocument.opportunityId, opportunityId),
+      eq(salesDocument.isDeleted, false),
+    );
+    if (docType) {
+      whereClause = and(whereClause, eq(salesDocument.docType, docType));
+    }
+    return await this.db.select().from(salesDocument).where(whereClause);
+  }
+
+  async getAcceptedQuotationForOpportunity(organizationId: number, opportunityId: number) {
+    const result = await this.db
+      .select()
+      .from(salesDocument)
+      .where(
+        and(
+          eq(salesDocument.organizationId, organizationId),
+          eq(salesDocument.opportunityId, opportunityId),
+          eq(salesDocument.docType, "quotation"),
+          eq(salesDocument.status, "Accepted"),
+          eq(salesDocument.isDeleted, false),
+        ),
+      )
+      .limit(1);
+    return (result as any)[0];
+  }
+
+  async sumOpportunityValue(organizationId: number) {
+    return this.sumOpenOpportunityValue(organizationId);
   }
 
   async getLeadSources(organizationId: number) {
@@ -228,8 +354,8 @@ class SalesRepository {
       .where(
         and(
           eq(salesRecord.organizationId, organizationId),
-          eq(salesRecord.recordType, "deal"),
-          eq(salesRecord.status, "Won"),
+          eq(salesRecord.recordType, "opportunity"),
+          eq(salesRecord.status, "Closed Won"),
           eq(salesRecord.isDeleted, false),
           gte(salesRecord.updatedAt, sql`now() - (${weeks} * interval '1 week')`),
         ),
@@ -273,8 +399,8 @@ class SalesRepository {
       .where(
         and(
           eq(salesRecord.organizationId, organizationId),
-          eq(salesRecord.recordType, "deal"),
-          eq(salesRecord.status, "Won"),
+          eq(salesRecord.recordType, "opportunity"),
+          eq(salesRecord.status, "Closed Won"),
           eq(salesRecord.isDeleted, false),
           gte(salesRecord.updatedAt, sql`date_trunc('month', now()) - (${months} * interval '1 month')`),
         ),
@@ -290,10 +416,10 @@ class SalesRepository {
 
   // ---------- Activities ----------
 
-  async logActivity(organizationId: number, description: string, createdBy?: number) {
+  async logActivity(organizationId: number, description: string, createdBy?: number, recordId?: number) {
     const result = await this.db
       .insert(salesActivity)
-      .values({ organizationId, description, createdBy })
+      .values({ organizationId, description, createdBy, recordId })
       .returning();
     return (result as any)[0];
   }

@@ -1350,17 +1350,34 @@ export const salesRecord = pgTable("sales_record", {
   organizationId: integer("organization_id")
     .notNull()
     .references((): any => organizations.id),
-  recordType: varchar("record_type", { length: 20 }).notNull(), // lead | client | opportunity | deal
+  recordType: varchar("record_type", { length: 20 }).notNull(), // lead | client | opportunity
   name: varchar("name", { length: 255 }).notNull(),
   company: varchar("company", { length: 255 }),
-  status: varchar("status", { length: 50 }).default("New").notNull(), // New/Contacted/Qualified/Proposal/Negotiation/Won/Lost/Active/Expansion
+  status: varchar("status", { length: 50 }).default("New").notNull(),
   owner: varchar("owner", { length: 255 }),
   value: decimal("value", { precision: 14, scale: 2 }).default("0").notNull(),
   health: integer("health").default(50).notNull(),
-  source: varchar("source", { length: 100 }), // Website | Referral | Campaign | Partner | Other
+  source: varchar("source", { length: 100 }),
   nextAction: varchar("next_action", { length: 255 }),
   followUpAt: timestamp("follow_up_at"),
   notes: text("notes"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+  // PRD lifecycle & conversion fields
+  conversionStatus: varchar("conversion_status", { length: 30 }), // Not Converted | Converted | Closed Lost
+  convertedAt: timestamp("converted_at"),
+  closeLostAt: timestamp("close_lost_at"),
+  wonAt: timestamp("won_at"),
+  activatedAt: timestamp("activated_at"),
+  churnedAt: timestamp("churned_at"),
+  sourceLeadId: integer("source_lead_id"),
+  sourceOpportunityId: integer("source_opportunity_id"),
+  linkedOpportunityId: integer("linked_opportunity_id"),
+  lossReason: varchar("loss_reason", { length: 100 }),
+  aiLeadScore: integer("ai_lead_score"),
+  isReadOnly: boolean("is_read_only").default(false).notNull(),
+  clientLifecycle: varchar("client_lifecycle", { length: 30 }), // Onboarding | Active | Renewed | Churned
+  renewalStatus: varchar("renewal_status", { length: 30 }), // On Track | At Risk | Renewal Due | Churned
+  clientSource: varchar("client_source", { length: 20 }), // conversion | direct
   isDeleted: boolean("is_deleted").default(false).notNull(),
   createdBy: integer("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -1373,6 +1390,7 @@ export const salesActivity = pgTable("sales_activity", {
   organizationId: integer("organization_id")
     .notNull()
     .references((): any => organizations.id),
+  recordId: integer("record_id"),
   description: varchar("description", { length: 500 }).notNull(),
   createdBy: integer("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -1421,6 +1439,7 @@ export const salesDocument = pgTable("sales_document", {
     .notNull()
     .references((): any => organizations.id),
   docType: varchar("doc_type", { length: 50 }).notNull(), // proposal | quotation | contract | case-study | battlecard | objection-playbook
+  opportunityId: integer("opportunity_id"),
   title: varchar("title", { length: 255 }).notNull(),
   clientName: varchar("client_name", { length: 255 }),
   status: varchar("status", { length: 50 }).default("Draft").notNull(),

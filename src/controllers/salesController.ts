@@ -109,6 +109,55 @@ class SalesController {
     }
   }
 
+  async convertLead(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = Number(req.params.id);
+      if (isNaN(id)) {
+        res.status(400).json({ success: false, message: "Invalid lead ID" });
+        return;
+      }
+      const user = res.locals.user;
+      const result = await this.salesServices.convertLeadToOpportunity(id, req.body, user);
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({
+        success: false,
+        message: error.message || "Failed to convert lead",
+      });
+    }
+  }
+
+  async activateClient(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = Number(req.params.id);
+      if (isNaN(id)) {
+        res.status(400).json({ success: false, message: "Invalid opportunity ID" });
+        return;
+      }
+      const user = res.locals.user;
+      const result = await this.salesServices.activateClientFromOpportunity(id, req.body, user);
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({
+        success: false,
+        message: error.message || "Failed to activate client",
+      });
+    }
+  }
+
+  async checkDuplicates(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = res.locals.user;
+      const result = await this.salesServices.checkDuplicates(req.body, user);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(400).json({
+        success: false,
+        message: error.message || "Failed to check duplicates",
+      });
+    }
+  }
+
   async askCopilot(req: Request, res: Response, next: NextFunction) {
     try {
       const user = res.locals.user;

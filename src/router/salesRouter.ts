@@ -23,6 +23,15 @@ salesRouter.get("/records/:id", authenticate, (req, res, next) =>
 salesRouter.put("/records/:id", authenticate, (req, res, next) =>
   salesController.updateRecord(req, res, next),
 );
+salesRouter.post("/leads/:id/convert", authenticate, (req, res, next) =>
+  salesController.convertLead(req, res, next),
+);
+salesRouter.post("/opportunities/:id/activate-client", authenticate, (req, res, next) =>
+  salesController.activateClient(req, res, next),
+);
+salesRouter.post("/records/check-duplicates", authenticate, (req, res, next) =>
+  salesController.checkDuplicates(req, res, next),
+);
 salesRouter.delete("/records/:id", authenticate, (req, res, next) =>
   salesController.deleteRecord(req, res, next),
 );
