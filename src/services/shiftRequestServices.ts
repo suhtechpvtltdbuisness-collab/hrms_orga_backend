@@ -1,5 +1,6 @@
 import ShiftRequestRepository from "../repository/shiftRequest.repo.js";
 import ShiftTypeRepository from "../repository/shiftType.repo.js";
+import { ShiftAssignmentRepository } from "../repository/shiftAssignment.repo.js";
 import { shiftRequest, users, Employee } from "../db/schema.js";
 import { db } from "../db/connection.js";
 import { eq } from "drizzle-orm";
@@ -7,10 +8,12 @@ import { eq } from "drizzle-orm";
 class ShiftRequestServices {
   private shiftRequestRepo: ShiftRequestRepository;
   private shiftTypeRepo: ShiftTypeRepository;
+  private shiftAssignmentRepo: ShiftAssignmentRepository;
 
   constructor() {
     this.shiftRequestRepo = new ShiftRequestRepository();
     this.shiftTypeRepo = new ShiftTypeRepository();
+    this.shiftAssignmentRepo = new ShiftAssignmentRepository();
   }
 
   private canManageOthers(currentUser: typeof users.$inferSelect) {
@@ -158,6 +161,17 @@ class ShiftRequestServices {
       reviewedAt: new Date(),
       rejectionReason: null,
     });
+
+    const approvedRequests = await this.shiftRequestRepo.getApprovedRequestsForEmployee(
+      currentUser.id,
+      existing.empId,
+    );
+    await this.shiftAssignmentRepo.syncApprovedRequestsToAssignments(
+      currentUser.id,
+      currentUser.organizationId,
+      existing.empId,
+      approvedRequests,
+    );
 
     const enriched = await this.shiftRequestRepo.getShiftRequestById(id, currentUser.id);
 

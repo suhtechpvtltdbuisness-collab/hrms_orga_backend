@@ -1,5 +1,6 @@
 import { users } from "../db/schema.js";
 import { ShiftAssignmentRepository } from "../repository/shiftAssignment.repo.js";
+import ShiftRequestRepository from "../repository/shiftRequest.repo.js";
 
 type AssignmentInput = { employeeId: number; shiftTypeId: number | null };
 
@@ -27,6 +28,7 @@ function requireAdmin(currentUser: typeof users.$inferSelect) {
 
 export class ShiftAssignmentServices {
   private repo = new ShiftAssignmentRepository();
+  private shiftRequestRepo = new ShiftRequestRepository();
 
   async getRoster(
     query: Record<string, unknown>,
@@ -154,6 +156,20 @@ export class ShiftAssignmentServices {
     const fromDate = query.fromDate === undefined ? undefined : validateDate(query.fromDate, "fromDate");
     const toDate = query.toDate === undefined ? undefined : validateDate(query.toDate, "toDate");
     if (fromDate && toDate && fromDate > toDate) throw new Error("fromDate cannot be after toDate");
+
+    const approvedRequests = await this.shiftRequestRepo.getApprovedRequestsForEmployee(adminId, employeeId);
+    if (approvedRequests.length) {
+      const syncAdminId = isAdmin ? currentUser.id : adminId;
+      const organizationId = isAdmin ? currentUser.organizationId : null;
+      await this.repo.syncApprovedRequestsToAssignments(
+        syncAdminId,
+        organizationId,
+        employeeId,
+        approvedRequests,
+        { fromDate, toDate },
+      );
+    }
+
     const data = await this.repo.getEmployeeHistory(adminId, employeeId, fromDate, toDate);
     return { success: true, message: "Employee shift history fetched successfully", data };
   }

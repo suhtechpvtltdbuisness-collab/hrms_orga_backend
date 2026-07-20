@@ -1,7 +1,17 @@
 import { and, asc, count, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { db } from "../db/connection.js";
 import { Employee, shiftAssignment, shiftType, users } from "../db/schema.js";
+import { expandDateRange, isDateInRange } from "../utils/dateRange.js";
 import { employeeIsVisible } from "./employeeVisibility.js";
+
+type ApprovedShiftRequest = {
+  id: number;
+  empId: number;
+  shiftTypeId: number;
+  fromDate: string;
+  toDate: string;
+  reviewedBy: number | null;
+};
 
 export class ShiftAssignmentRepository {
   async getRoster(adminId: number, rosterDate: string, search: string, page: number, limit: number) {
@@ -208,5 +218,50 @@ export class ShiftAssignmentRepository {
       .delete(shiftAssignment)
       .where(and(eq(shiftAssignment.id, id), eq(shiftAssignment.adminId, adminId)))
       .returning({ id: shiftAssignment.id });
+  }
+
+  async syncApprovedRequestsToAssignments(
+    adminId: number,
+    organizationId: number | null,
+    empId: number,
+    approvedRequests: ApprovedShiftRequest[],
+    dateFilter?: { fromDate?: string; toDate?: string },
+  ) {
+    const dateAssignments = new Map<string, { shiftTypeId: number; assignedBy: number }>();
+
+    for (const request of approvedRequests) {
+      for (const rosterDate of expandDateRange(request.fromDate, request.toDate)) {
+        if (!isDateInRange(rosterDate, dateFilter?.fromDate, dateFilter?.toDate)) continue;
+        if (dateAssignments.has(rosterDate)) continue;
+        dateAssignments.set(rosterDate, {
+          shiftTypeId: request.shiftTypeId,
+          assignedBy: request.reviewedBy ?? adminId,
+        });
+      }
+    }
+
+    if (!dateAssignments.size) return [];
+
+    const items = [...dateAssignments.entries()].map(([rosterDate, assignment]) => ({
+      adminId,
+      organizationId,
+      empId,
+      shiftTypeId: assignment.shiftTypeId,
+      rosterDate,
+      assignedBy: assignment.assignedBy,
+    }));
+
+    return db
+      .insert(shiftAssignment)
+      .values(items)
+      .onConflictDoUpdate({
+        target: [shiftAssignment.adminId, shiftAssignment.empId, shiftAssignment.rosterDate],
+        set: {
+          shiftTypeId: sql`excluded.shift_type_id`,
+          assignedBy: sql`excluded.assigned_by`,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
   }
 }

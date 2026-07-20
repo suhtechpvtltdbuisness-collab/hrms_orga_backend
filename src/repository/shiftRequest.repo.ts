@@ -91,6 +91,32 @@ class ShiftRequestRepository {
       .returning();
     return result;
   }
+
+  async getApprovedRequestsForEmployee(adminId: number, empId: number) {
+    return db
+      .select({
+        id: shiftRequest.id,
+        empId: shiftRequest.empId,
+        shiftTypeId: shiftRequest.shiftTypeId,
+        fromDate: shiftRequest.fromDate,
+        toDate: shiftRequest.toDate,
+        reviewedBy: shiftRequest.reviewedBy,
+        reviewedAt: shiftRequest.reviewedAt,
+        updatedAt: shiftRequest.updatedAt,
+      })
+      .from(shiftRequest)
+      .innerJoin(Employee, eq(Employee.userId, shiftRequest.empId))
+      .where(
+        and(
+          eq(shiftRequest.isDeleted, false),
+          eq(shiftRequest.status, "approved"),
+          eq(shiftRequest.empId, empId),
+          eq(Employee.adminId, adminId),
+          employeeIsVisible(shiftRequest.empId),
+        ),
+      )
+      .orderBy(desc(shiftRequest.reviewedAt), desc(shiftRequest.id));
+  }
 }
 
 export default ShiftRequestRepository;
