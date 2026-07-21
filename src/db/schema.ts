@@ -1103,6 +1103,9 @@ export const jobApplication = pgTable("job_application", {
   applicantSkills: text("applicant_skills"),
   resume: text("resume"),
   coverLetter: text("cover_letter"),
+  documentUploadToken: varchar("document_upload_token", { length: 128 }).unique(),
+  candidateDocuments: text("candidate_documents"),
+  candidateProfile: text("candidate_profile"),
   status: varchar("status", { length: 50 }).default("pending").notNull(),
   hrNotes: text("hr_notes"),
   atsData: jsonb("ats_data"),
@@ -1122,6 +1125,38 @@ export const interview = pgTable("interview", {
   meetingLink: varchar("meeting_link", { length: 255 }),
   status: varchar("status", { length: 50 }).default("scheduled").notNull(),
   feedback: text("feedback"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const offerLetter = pgTable("offer_letter", {
+  id: serial("id").primaryKey(),
+  jobApplicationId: integer("job_application_id")
+    .notNull()
+    .references(() => jobApplication.id),
+  interviewId: integer("interview_id").references(() => interview.id),
+  adminId: integer("admin_id")
+    .notNull()
+    .references(() => users.id),
+  candidateName: varchar("candidate_name", { length: 255 }).notNull(),
+  candidateEmail: varchar("candidate_email", { length: 255 }).notNull(),
+  jobTitle: varchar("job_title", { length: 255 }),
+  salary: varchar("salary", { length: 100 }),
+  joiningDate: date("joining_date"),
+  department: varchar("department", { length: 255 }),
+  designation: varchar("designation", { length: 255 }),
+  notes: text("notes"),
+  status: varchar("status", { length: 50 }).default("draft").notNull(),
+  acceptToken: varchar("accept_token", { length: 128 }).unique(),
+  onboardingStatus: varchar("onboarding_status", { length: 50 }).default("not_started").notNull(),
+  onboardingStartedAt: timestamp("onboarding_started_at"),
+  onboardingCompletedAt: timestamp("onboarding_completed_at"),
+  onboardingTasks: text("onboarding_tasks"),
+  employeeUserId: integer("employee_user_id").references(() => users.id),
+  viewedAt: timestamp("viewed_at"),
+  sentAt: timestamp("sent_at"),
+  acceptedAt: timestamp("accepted_at"),
+  createdBy: integer("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

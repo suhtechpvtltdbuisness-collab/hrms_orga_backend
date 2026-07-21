@@ -1,4 +1,4 @@
-import { jobs, jobApplication, interview, referrals, users } from "../db/schema.js";
+import { jobs, jobApplication, interview, offerLetter, referrals, users } from "../db/schema.js";
 import { db } from "../db/connection.js";
 import { eq, and, desc, isNull, or, ilike, sql } from "drizzle-orm";
 
@@ -85,6 +85,9 @@ class HiringRepository {
         applicantSkills: jobApplication.applicantSkills,
         resume: jobApplication.resume,
         coverLetter: jobApplication.coverLetter,
+        documentUploadToken: jobApplication.documentUploadToken,
+        candidateDocuments: jobApplication.candidateDocuments,
+        candidateProfile: jobApplication.candidateProfile,
         status: jobApplication.status,
         hrNotes: jobApplication.hrNotes,
         atsData: jobApplication.atsData,
@@ -107,6 +110,37 @@ class HiringRepository {
       .where(eq(jobApplication.id, id))
       .returning();
     return result[0];
+  }
+
+  async updateApplication(id: number, data: Partial<typeof jobApplication.$inferInsert>) {
+    const [result] = await db
+      .update(jobApplication)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(jobApplication.id, id))
+      .returning();
+    return result;
+  }
+
+  async getApplicationByDocumentToken(token: string) {
+    const [result] = await db
+      .select({
+        id: jobApplication.id,
+        jobId: jobApplication.jobId,
+        applicantName: jobApplication.applicantName,
+        applicantEmail: jobApplication.applicantEmail,
+        applicantPhone: jobApplication.applicantPhone,
+        resume: jobApplication.resume,
+        documentUploadToken: jobApplication.documentUploadToken,
+        candidateDocuments: jobApplication.candidateDocuments,
+        candidateProfile: jobApplication.candidateProfile,
+        status: jobApplication.status,
+        jobTitle: jobs.title,
+      })
+      .from(jobApplication)
+      .leftJoin(jobs, eq(jobApplication.jobId, jobs.id))
+      .where(eq(jobApplication.documentUploadToken, token))
+      .limit(1);
+    return result;
   }
 
   async deleteApplication(id: number) {
@@ -190,6 +224,126 @@ class HiringRepository {
       .where(eq(interview.id, id))
       .returning();
     return result[0];
+  }
+
+  async createOfferLetter(data: typeof offerLetter.$inferInsert) {
+    const [result] = await db.insert(offerLetter).values(data).returning();
+    return result;
+  }
+
+  async getOfferLetters(adminId: number, status?: string) {
+    const conditions = [eq(offerLetter.adminId, adminId)];
+    if (status) conditions.push(eq(offerLetter.status, status));
+
+    return db
+      .select({
+        id: offerLetter.id,
+        jobApplicationId: offerLetter.jobApplicationId,
+        interviewId: offerLetter.interviewId,
+        candidateName: offerLetter.candidateName,
+        candidateEmail: offerLetter.candidateEmail,
+        jobTitle: offerLetter.jobTitle,
+        salary: offerLetter.salary,
+        joiningDate: offerLetter.joiningDate,
+        department: offerLetter.department,
+        designation: offerLetter.designation,
+        notes: offerLetter.notes,
+        status: offerLetter.status,
+        sentAt: offerLetter.sentAt,
+        acceptedAt: offerLetter.acceptedAt,
+        onboardingStatus: offerLetter.onboardingStatus,
+        onboardingStartedAt: offerLetter.onboardingStartedAt,
+        onboardingCompletedAt: offerLetter.onboardingCompletedAt,
+        onboardingTasks: offerLetter.onboardingTasks,
+        employeeUserId: offerLetter.employeeUserId,
+        viewedAt: offerLetter.viewedAt,
+        createdAt: offerLetter.createdAt,
+        updatedAt: offerLetter.updatedAt,
+      })
+      .from(offerLetter)
+      .where(and(...conditions))
+      .orderBy(desc(offerLetter.createdAt));
+  }
+
+  async getOfferLetterById(id: number, adminId?: number) {
+    const conditions = [eq(offerLetter.id, id)];
+    if (adminId) conditions.push(eq(offerLetter.adminId, adminId));
+
+    const [result] = await db
+      .select({
+        id: offerLetter.id,
+        jobApplicationId: offerLetter.jobApplicationId,
+        interviewId: offerLetter.interviewId,
+        adminId: offerLetter.adminId,
+        candidateName: offerLetter.candidateName,
+        candidateEmail: offerLetter.candidateEmail,
+        jobTitle: offerLetter.jobTitle,
+        salary: offerLetter.salary,
+        joiningDate: offerLetter.joiningDate,
+        department: offerLetter.department,
+        designation: offerLetter.designation,
+        notes: offerLetter.notes,
+        status: offerLetter.status,
+        acceptToken: offerLetter.acceptToken,
+        onboardingStatus: offerLetter.onboardingStatus,
+        onboardingStartedAt: offerLetter.onboardingStartedAt,
+        onboardingCompletedAt: offerLetter.onboardingCompletedAt,
+        onboardingTasks: offerLetter.onboardingTasks,
+        employeeUserId: offerLetter.employeeUserId,
+        viewedAt: offerLetter.viewedAt,
+        sentAt: offerLetter.sentAt,
+        acceptedAt: offerLetter.acceptedAt,
+        createdAt: offerLetter.createdAt,
+        updatedAt: offerLetter.updatedAt,
+      })
+      .from(offerLetter)
+      .where(and(...conditions))
+      .limit(1);
+    return result;
+  }
+
+  async getOfferLetterByToken(token: string) {
+    const [result] = await db
+      .select({
+        id: offerLetter.id,
+        jobApplicationId: offerLetter.jobApplicationId,
+        candidateName: offerLetter.candidateName,
+        candidateEmail: offerLetter.candidateEmail,
+        jobTitle: offerLetter.jobTitle,
+        salary: offerLetter.salary,
+        joiningDate: offerLetter.joiningDate,
+        department: offerLetter.department,
+        designation: offerLetter.designation,
+        notes: offerLetter.notes,
+        status: offerLetter.status,
+        acceptToken: offerLetter.acceptToken,
+        viewedAt: offerLetter.viewedAt,
+        sentAt: offerLetter.sentAt,
+        acceptedAt: offerLetter.acceptedAt,
+      })
+      .from(offerLetter)
+      .where(eq(offerLetter.acceptToken, token))
+      .limit(1);
+    return result;
+  }
+
+  async getOfferLetterByApplicationId(jobApplicationId: number, adminId: number) {
+    const [result] = await db
+      .select()
+      .from(offerLetter)
+      .where(and(eq(offerLetter.jobApplicationId, jobApplicationId), eq(offerLetter.adminId, adminId)))
+      .orderBy(desc(offerLetter.createdAt))
+      .limit(1);
+    return result;
+  }
+
+  async updateOfferLetter(id: number, data: Partial<typeof offerLetter.$inferInsert>) {
+    const [result] = await db
+      .update(offerLetter)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(offerLetter.id, id))
+      .returning();
+    return result;
   }
 
   async createReferral(referralData: any) {

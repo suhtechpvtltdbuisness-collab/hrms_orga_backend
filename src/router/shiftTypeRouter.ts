@@ -17,5 +17,8 @@ shiftTypeRouter.get("/:id", authenticate, (req, res, next) =>
 shiftTypeRouter.put("/:id", authenticate, (req, res, next) =>
   shiftTypeController.updateShiftType(req, res, next),
 );
+shiftTypeRouter.delete("/:id", authenticate, (req, res, next) =>
+  shiftTypeController.deleteShiftType(req, res, next),
+);
 
 export default shiftTypeRouter;

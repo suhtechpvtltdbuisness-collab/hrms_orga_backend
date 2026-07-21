@@ -125,6 +125,28 @@ class ShiftTypeServices {
       data: formatShiftType(result),
     };
   }
+
+  async deleteShiftType(id: number, currentUser: typeof users.$inferSelect) {
+    if (!currentUser.isAdmin) {
+      throw new Error("Only admins can delete shift types");
+    }
+
+    const existing = await this.shiftTypeRepo.getShiftTypeById(id, currentUser.id);
+    if (!existing) {
+      throw new Error("Shift type not found");
+    }
+
+    const result = await this.shiftTypeRepo.deleteShiftType(id, currentUser.id);
+    if (!result) {
+      throw new Error("Shift type not found");
+    }
+
+    return {
+      message: "Shift type deleted successfully",
+      success: true,
+      data: formatShiftType(result),
+    };
+  }
 }
 
 export default ShiftTypeServices;

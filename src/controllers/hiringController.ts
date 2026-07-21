@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import HiringServices from "../services/hiringServices.js";
+import { uploadImageToS3OrLocal } from "../services/uploadService.js";
 
 class HiringController {
   private hiringServices: HiringServices;
@@ -290,6 +291,209 @@ class HiringController {
       res.status(200).json(result);
     } catch (error: any) {
       res.status(400).json({ success: false, message: error.message || "Failed to submit feedback" });
+    }
+  }
+
+  // ─── Offer Letters ─────────────────────────────────────────────
+  async createOfferLetter(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = res.locals.user;
+      const result = await this.hiringServices.createOfferLetter(req.body, user);
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message || "Failed to create offer letter" });
+    }
+  }
+
+  async getOfferLetters(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = res.locals.user;
+      const status = typeof req.query.status === "string" ? req.query.status : undefined;
+      const result = await this.hiringServices.getOfferLetters(user, status);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message || "Failed to fetch offer letters" });
+    }
+  }
+
+  async getOfferLetterById(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = Number(req.params.id);
+      const user = res.locals.user;
+      const result = await this.hiringServices.getOfferLetterById(id, user);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(404).json({ success: false, message: error.message || "Offer letter not found" });
+    }
+  }
+
+  async sendOfferLetter(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = Number(req.params.id);
+      const user = res.locals.user;
+      const result = await this.hiringServices.sendOfferLetter(id, user);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message || "Failed to send offer letter" });
+    }
+  }
+
+  async updateOfferLetterStatus(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = Number(req.params.id);
+      const user = res.locals.user;
+      const { status } = req.body;
+      const result = await this.hiringServices.updateOfferLetterStatus(id, status, user);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message || "Failed to update offer status" });
+    }
+  }
+
+  async getPublicOfferLetter(req: Request, res: Response, next: NextFunction) {
+    try {
+      const token = String(req.params.token || "");
+      const result = await this.hiringServices.getPublicOfferLetter(token);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(404).json({ success: false, message: error.message || "Offer letter not found" });
+    }
+  }
+
+  async acceptPublicOfferLetter(req: Request, res: Response, next: NextFunction) {
+    try {
+      const token = String(req.params.token || "");
+      const result = await this.hiringServices.acceptPublicOfferLetter(token);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message || "Failed to accept offer letter" });
+    }
+  }
+
+  async declinePublicOfferLetter(req: Request, res: Response, next: NextFunction) {
+    try {
+      const token = String(req.params.token || "");
+      const result = await this.hiringServices.declinePublicOfferLetter(token);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message || "Failed to decline offer letter" });
+    }
+  }
+
+  async getOfferOnboarding(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = Number(req.params.id);
+      const user = res.locals.user;
+      const result = await this.hiringServices.getOfferOnboarding(id, user);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(404).json({ success: false, message: error.message || "Failed to fetch onboarding" });
+    }
+  }
+
+  async startOfferOnboarding(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = Number(req.params.id);
+      const user = res.locals.user;
+      const result = await this.hiringServices.startOfferOnboarding(id, req.body?.setupTasks, user);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message || "Failed to start onboarding" });
+    }
+  }
+
+  async updateOfferOnboardingTasks(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = Number(req.params.id);
+      const user = res.locals.user;
+      const result = await this.hiringServices.updateOfferOnboardingTasks(id, req.body || {}, user);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message || "Failed to update onboarding tasks" });
+    }
+  }
+
+  async completeOfferOnboarding(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = Number(req.params.id);
+      const user = res.locals.user;
+      const result = await this.hiringServices.completeOfferOnboarding(id, user);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message || "Failed to complete onboarding" });
+    }
+  }
+
+  async linkOfferEmployee(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = Number(req.params.id);
+      const user = res.locals.user;
+      const userId = Number(req.body?.userId);
+      const result = await this.hiringServices.linkOfferEmployee(id, userId, user);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message || "Failed to link employee" });
+    }
+  }
+
+  async getOfferOnboardingPrefill(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = Number(req.params.id);
+      const user = res.locals.user;
+      const result = await this.hiringServices.getOfferOnboardingPrefill(id, user);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(404).json({ success: false, message: error.message || "Failed to fetch offer prefill" });
+    }
+  }
+
+  async getPublicCandidateDocuments(req: Request, res: Response, next: NextFunction) {
+    try {
+      const token = String(req.params.token || "");
+      const result = await this.hiringServices.getPublicCandidateDocuments(token);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(404).json({ success: false, message: error.message || "Document portal not found" });
+    }
+  }
+
+  async submitPublicCandidateDocuments(req: Request, res: Response, next: NextFunction) {
+    try {
+      const token = String(req.params.token || "");
+      const host = req.get("host") || "localhost:4000";
+      const profile =
+        typeof req.body.profile === "string"
+          ? JSON.parse(req.body.profile)
+          : req.body.profile || {};
+
+      const uploadedFiles: Record<string, { url: string; name: string; type?: string; size?: number }> = {};
+      const fileMap = req.files as Record<string, Express.Multer.File[]> | undefined;
+      for (const [field, items] of Object.entries(fileMap || {})) {
+        const file = items?.[0];
+        if (!file) continue;
+        uploadedFiles[field] = {
+          url: await uploadImageToS3OrLocal(file, host),
+          name: file.originalname,
+          type: file.mimetype,
+          size: file.size,
+        };
+      }
+
+      const result = await this.hiringServices.submitPublicCandidateDocuments(token, profile, uploadedFiles);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message || "Failed to submit documents" });
+    }
+  }
+
+  async resendCandidateDocumentEmail(req: Request, res: Response, next: NextFunction) {
+    try {
+      const applicationId = Number(req.params.id);
+      const user = res.locals.user;
+      const result = await this.hiringServices.resendCandidateDocumentEmail(applicationId, user);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message || "Failed to send document email" });
     }
   }
 

@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS "offer_letter" (
+  "id" serial PRIMARY KEY NOT NULL,
+  "job_application_id" integer NOT NULL REFERENCES "job_application"("id"),
+  "interview_id" integer REFERENCES "interview"("id"),
+  "admin_id" integer NOT NULL REFERENCES "users"("id"),
+  "candidate_name" varchar(255) NOT NULL,
+  "candidate_email" varchar(255) NOT NULL,
+  "job_title" varchar(255),
+  "salary" varchar(100),
+  "joining_date" date,
+  "department" varchar(255),
+  "designation" varchar(255),
+  "notes" text,
+  "status" varchar(50) DEFAULT 'draft' NOT NULL,
+  "sent_at" timestamp,
+  "accepted_at" timestamp,
+  "created_by" integer REFERENCES "users"("id"),
+  "created_at" timestamp DEFAULT now() NOT NULL,
+  "updated_at" timestamp DEFAULT now() NOT NULL
+);

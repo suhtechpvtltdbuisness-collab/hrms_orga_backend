@@ -41,6 +41,15 @@ class ShiftTypeRepository {
       .returning();
     return result;
   }
+
+  async deleteShiftType(id: number, adminId: number) {
+    const [result] = await db
+      .update(shiftType)
+      .set({ isDeleted: true, updatedAt: new Date() })
+      .where(and(eq(shiftType.id, id), eq(shiftType.createdBy, adminId), eq(shiftType.isDeleted, false)))
+      .returning();
+    return result;
+  }
 }
 
 export default ShiftTypeRepository;
