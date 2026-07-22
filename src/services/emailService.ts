@@ -8,6 +8,7 @@ interface MailOptions {
   subject: string;
   html: string;
   attachments?: any[];
+  replyTo?: string;
 }
 
 const getLogoPath = (): string => {
@@ -33,6 +34,14 @@ const getLogoPath = (): string => {
 
   return cwdPath;
 };
+
+const escapeHtml = (value: string) =>
+  String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 
 const getTransporter = () => {
   const host = process.env.SMTP_HOST;
@@ -65,6 +74,7 @@ export const emailService = {
         subject: options.subject,
         html: options.html,
         attachments: options.attachments || [],
+        ...(options.replyTo ? { replyTo: options.replyTo } : {}),
       };
 
       const info = await transporter.sendMail(mailOptions);
@@ -859,6 +869,71 @@ export const emailService = {
       to: email,
       subject: `Upload your documents - ${jobTitle}`,
       html: htmlContent,
+      attachments: [
+        {
+          filename: "logo.png",
+          path: getLogoPath(),
+          cid: "orgalogo",
+        },
+      ],
+    });
+  },
+
+  sendDemoRequestEmail: async (payload: {
+    name: string;
+    email: string;
+    contact: string;
+    preferredLanguage: string;
+    teamSize: string;
+    useCase: string;
+  }): Promise<boolean> => {
+    const recipient = (process.env.DEMO_REQUEST_EMAIL || "info@suhtech.top").trim();
+    const submittedAt = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+    const safe = {
+      name: escapeHtml(payload.name),
+      email: escapeHtml(payload.email),
+      contact: escapeHtml(payload.contact),
+      preferredLanguage: escapeHtml(payload.preferredLanguage),
+      teamSize: escapeHtml(payload.teamSize),
+      useCase: escapeHtml(payload.useCase),
+    };
+    const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>New ORGA Demo Request</title>
+</head>
+<body style="font-family: Arial, sans-serif; background:#f4f6f9; margin:0; padding:24px; color:#1f2937;">
+  <div style="max-width:640px; margin:0 auto; background:#ffffff; border-radius:16px; overflow:hidden; box-shadow:0 10px 30px rgba(15,23,42,0.08);">
+    <div style="background:linear-gradient(135deg,#756FCC,#C65CF4); padding:24px 28px; color:#ffffff;">
+      <h1 style="margin:0; font-size:24px;">New Demo Request</h1>
+      <p style="margin:8px 0 0; font-size:14px; opacity:0.95;">Submitted from the ORGA marketing site</p>
+    </div>
+    <div style="padding:28px;">
+      <table style="width:100%; border-collapse:collapse;">
+        <tr><td style="padding:10px 0; font-size:12px; text-transform:uppercase; color:#6b7280; width:180px;">Name</td><td style="padding:10px 0; font-size:15px; font-weight:600;">${safe.name}</td></tr>
+        <tr><td style="padding:10px 0; font-size:12px; text-transform:uppercase; color:#6b7280;">Email</td><td style="padding:10px 0; font-size:15px;"><a href="mailto:${safe.email}" style="color:#756FCC;">${safe.email}</a></td></tr>
+        <tr><td style="padding:10px 0; font-size:12px; text-transform:uppercase; color:#6b7280;">Contact</td><td style="padding:10px 0; font-size:15px;">${safe.contact}</td></tr>
+        <tr><td style="padding:10px 0; font-size:12px; text-transform:uppercase; color:#6b7280;">Preferred language</td><td style="padding:10px 0; font-size:15px;">${safe.preferredLanguage}</td></tr>
+        <tr><td style="padding:10px 0; font-size:12px; text-transform:uppercase; color:#6b7280;">Team size</td><td style="padding:10px 0; font-size:15px;">${safe.teamSize}</td></tr>
+      </table>
+      <div style="margin-top:20px; padding:16px; border-radius:12px; background:#f8fafc; border:1px solid #e5e7eb;">
+        <p style="margin:0 0 8px; font-size:12px; text-transform:uppercase; color:#6b7280;">Use case</p>
+        <p style="margin:0; font-size:15px; line-height:1.6; white-space:pre-wrap;">${safe.useCase}</p>
+      </div>
+      <p style="margin:24px 0 0; font-size:12px; color:#6b7280;">Submitted at ${submittedAt} IST</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+    return emailService.sendMail({
+      to: recipient,
+      subject: `Demo request from ${payload.name}`,
+      html: htmlContent,
+      replyTo: payload.email,
       attachments: [
         {
           filename: "logo.png",
