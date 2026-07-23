@@ -97,46 +97,114 @@ const getTransporterCandidates = () => {
   return candidates;
 };
 
-export const emailService = {
-  sendMail: async (options: MailOptions): Promise<boolean> => {
-    const { host, user, pass } = getSmtpConfig();
-    if (!host || !user || !pass) {
-      console.error("Failed to send email: SMTP is not configured");
+const buildResendAttachments = (attachments: MailOptions["attachments"] = []) =>
+  (attachments || [])
+    .map((attachment) => {
+      const filePath = attachment?.path;
+      if (!filePath || !fs.existsSync(filePath)) return null;
+
+      return {
+        filename: attachment.filename || path.basename(filePath),
+        content: fs.readFileSync(filePath).toString("base64"),
+        ...(attachment.cid ? { content_id: String(attachment.cid) } : {}),
+      };
+    })
+    .filter((attachment): attachment is NonNullable<typeof attachment> => attachment !== null);
+
+const sendViaResend = async (options: MailOptions): Promise<boolean> => {
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  if (!apiKey) return false;
+
+  const fromEmail = process.env.EMAIL_FROM || "noreply@orga.cc";
+  const fromName = process.env.EMAIL_FROM_NAME || "ORGA HRMS";
+  const payload: Record<string, unknown> = {
+    from: `${fromName} <${fromEmail}>`,
+    to: [options.to],
+    subject: options.subject,
+    html: options.html,
+  };
+
+  if (options.replyTo) {
+    payload.reply_to = options.replyTo;
+  }
+
+  const attachments = buildResendAttachments(options.attachments);
+  if (attachments.length) {
+    payload.attachments = attachments;
+  }
+
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const body = await response.text();
+    if (!response.ok) {
+      console.error("Resend API error:", response.status, body);
       return false;
     }
 
-    const mailOptions = {
-      from: `"${process.env.EMAIL_FROM_NAME || "ORGA HRMS"}" <${process.env.EMAIL_FROM || "noreply@orga.cc"}>`,
-      to: options.to,
-      subject: options.subject,
-      html: options.html,
-      attachments: options.attachments || [],
-      ...(options.replyTo ? { replyTo: options.replyTo } : {}),
-    };
+    console.log("Email sent successfully via Resend:", body);
+    return true;
+  } catch (error) {
+    console.error("Failed to send email via Resend:", error);
+    return false;
+  }
+};
 
-    const candidates = getTransporterCandidates();
-    let lastError: unknown;
+const sendViaSmtp = async (options: MailOptions): Promise<boolean> => {
+  const { host, user, pass } = getSmtpConfig();
+  if (!host || !user || !pass) {
+    console.error("Failed to send email: SMTP is not configured");
+    return false;
+  }
 
-    for (const candidate of candidates) {
-      try {
-        const transporter = buildTransport(candidate.port, candidate.secure);
-        const info = await transporter.sendMail(mailOptions);
-        console.log(
-          `Email sent successfully via ${host}:${candidate.port}:`,
-          info.messageId,
-        );
-        return true;
-      } catch (error) {
-        lastError = error;
-        console.error(
-          `Failed to send email via ${host}:${candidate.port}:`,
-          error,
-        );
-      }
+  const mailOptions = {
+    from: `"${process.env.EMAIL_FROM_NAME || "ORGA HRMS"}" <${process.env.EMAIL_FROM || "noreply@orga.cc"}>`,
+    to: options.to,
+    subject: options.subject,
+    html: options.html,
+    attachments: options.attachments || [],
+    ...(options.replyTo ? { replyTo: options.replyTo } : {}),
+  };
+
+  const candidates = getTransporterCandidates();
+  let lastError: unknown;
+
+  for (const candidate of candidates) {
+    try {
+      const transporter = buildTransport(candidate.port, candidate.secure);
+      const info = await transporter.sendMail(mailOptions);
+      console.log(
+        `Email sent successfully via ${host}:${candidate.port}:`,
+        info.messageId,
+      );
+      return true;
+    } catch (error) {
+      lastError = error;
+      console.error(
+        `Failed to send email via ${host}:${candidate.port}:`,
+        error,
+      );
+    }
+  }
+
+  console.error("Failed to send email after trying all SMTP ports:", lastError);
+  return false;
+};
+
+export const emailService = {
+  sendMail: async (options: MailOptions): Promise<boolean> => {
+    if (process.env.RESEND_API_KEY?.trim()) {
+      return sendViaResend(options);
     }
 
-    console.error("Failed to send email after trying all SMTP ports:", lastError);
-    return false;
+    return sendViaSmtp(options);
   },
 
   sendOtpEmail: async (email: string, name: string, otp: string): Promise<boolean> => {
