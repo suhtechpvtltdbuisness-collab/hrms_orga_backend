@@ -1,7 +1,11 @@
 import nodemailer from "nodemailer";
+import type SMTPTransport from "nodemailer/lib/smtp-transport/index.js";
+import dns from "node:dns";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
+
+dns.setDefaultResultOrder("ipv4first");
 
 interface MailOptions {
   to: string;
@@ -10,6 +14,10 @@ interface MailOptions {
   attachments?: any[];
   replyTo?: string;
 }
+
+const ipv4Lookup: SMTPTransport.Options["dns"] = (hostname, options, callback) => {
+  dns.lookup(hostname, { ...(options || {}), family: 4 }, callback);
+};
 
 const getLogoPath = (): string => {
   if (process.env.LOGO_PATH) {
@@ -43,47 +51,97 @@ const escapeHtml = (value: string) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
-const getTransporter = () => {
-  const host = process.env.SMTP_HOST;
-  const port = parseInt(process.env.SMTP_PORT || "465", 10);
-  const user = process.env.SMTP_USER;
+const getSmtpConfig = () => {
+  const host = process.env.SMTP_HOST?.trim();
+  const user = process.env.SMTP_USER?.trim();
   const pass = process.env.SMTP_PASS;
+  const port = parseInt(process.env.SMTP_PORT || "587", 10);
+  const secure =
+    process.env.SMTP_SECURE !== undefined
+      ? process.env.SMTP_SECURE === "true"
+      : port === 465;
 
-  if (!host || !user || !pass) {
-    console.warn("SMTP credentials are not fully configured in environment variables.");
-  }
+  return { host, user, pass, port, secure };
+};
+
+const buildTransport = (port: number, secure: boolean) => {
+  const { host, user, pass } = getSmtpConfig();
 
   return nodemailer.createTransport({
     host,
     port,
-    secure: port === 465,
+    secure,
+    requireTLS: !secure,
     auth: {
       user,
       pass,
     },
+    connectionTimeout: 20000,
+    greetingTimeout: 20000,
+    socketTimeout: 30000,
+    tls: {
+      minVersion: "TLSv1.2",
+      servername: host,
+    },
+    dns: {
+      lookup: ipv4Lookup,
+    },
   });
+};
+
+const getTransporterCandidates = () => {
+  const { port, secure } = getSmtpConfig();
+  const candidates: Array<{ port: number; secure: boolean }> = [{ port, secure }];
+
+  if (port === 465) {
+    candidates.push({ port: 587, secure: false });
+  } else if (port === 587) {
+    candidates.push({ port: 465, secure: true });
+  }
+
+  return candidates;
 };
 
 export const emailService = {
   sendMail: async (options: MailOptions): Promise<boolean> => {
-    try {
-      const transporter = getTransporter();
-      const mailOptions = {
-        from: `"${process.env.EMAIL_FROM_NAME || 'ORGA HRMS'}" <${process.env.EMAIL_FROM || 'noreply@orga.cc'}>`,
-        to: options.to,
-        subject: options.subject,
-        html: options.html,
-        attachments: options.attachments || [],
-        ...(options.replyTo ? { replyTo: options.replyTo } : {}),
-      };
-
-      const info = await transporter.sendMail(mailOptions);
-      console.log("Email sent successfully:", info.messageId);
-      return true;
-    } catch (error) {
-      console.error("Failed to send email:", error);
+    const { host, user, pass } = getSmtpConfig();
+    if (!host || !user || !pass) {
+      console.error("Failed to send email: SMTP is not configured");
       return false;
     }
+
+    const mailOptions = {
+      from: `"${process.env.EMAIL_FROM_NAME || "ORGA HRMS"}" <${process.env.EMAIL_FROM || "noreply@orga.cc"}>`,
+      to: options.to,
+      subject: options.subject,
+      html: options.html,
+      attachments: options.attachments || [],
+      ...(options.replyTo ? { replyTo: options.replyTo } : {}),
+    };
+
+    const candidates = getTransporterCandidates();
+    let lastError: unknown;
+
+    for (const candidate of candidates) {
+      try {
+        const transporter = buildTransport(candidate.port, candidate.secure);
+        const info = await transporter.sendMail(mailOptions);
+        console.log(
+          `Email sent successfully via ${host}:${candidate.port}:`,
+          info.messageId,
+        );
+        return true;
+      } catch (error) {
+        lastError = error;
+        console.error(
+          `Failed to send email via ${host}:${candidate.port}:`,
+          error,
+        );
+      }
+    }
+
+    console.error("Failed to send email after trying all SMTP ports:", lastError);
+    return false;
   },
 
   sendOtpEmail: async (email: string, name: string, otp: string): Promise<boolean> => {
