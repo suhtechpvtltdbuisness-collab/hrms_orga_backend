@@ -197,3 +197,45 @@ export const getTodayStatus = async (req: Request, res: Response) => {
     res.status(400).json({ error: error.message });
   }
 };
+
+export const downloadAttendanceTemplate = async (req: Request, res: Response) => {
+  try {
+    const fromDate = typeof req.query.fromDate === "string" ? req.query.fromDate : undefined;
+    const toDate = typeof req.query.toDate === "string" ? req.query.toDate : undefined;
+    const template = await attendanceService.generateImportTemplate(
+      res.locals.user,
+      fromDate,
+      toDate,
+    );
+
+    res.setHeader("Content-Type", template.mimeType);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${template.fileName}"`,
+    );
+    res.send(template.buffer);
+  } catch (error: any) {
+    res.status(400).json({ success: false, error: error.message, message: error.message });
+  }
+};
+
+export const importAttendance = async (req: Request, res: Response) => {
+  try {
+    const file = req.file as Express.Multer.File | undefined;
+    const result = await attendanceService.importAttendanceFile(file, res.locals.user, {
+      fromDate: typeof req.body?.fromDate === "string" ? req.body.fromDate : undefined,
+      toDate: typeof req.body?.toDate === "string" ? req.body.toDate : undefined,
+    });
+
+    const failedCount = result.data.failedCount;
+    const successCount = result.data.successCount;
+    const statusCode = successCount === 0 && failedCount > 0 ? 400 : 200;
+    res.status(statusCode).json(result);
+  } catch (error: any) {
+    res.status(400).json({
+      success: false,
+      error: error.message,
+      message: error.message,
+    });
+  }
+};

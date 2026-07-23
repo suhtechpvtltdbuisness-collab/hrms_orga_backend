@@ -75,6 +75,11 @@ export const shiftRequestStatusEnum = pgEnum("shift_request_status", [
   "approved",
   "rejected",
 ]);
+export const attendanceRequestStatusEnum = pgEnum("attendance_request_status", [
+  "pending",
+  "approved",
+  "rejected",
+]);
 export const salaryComponentTypeEnum = pgEnum("salary_component_type", [
   "earning",
   "deduction",
@@ -401,6 +406,25 @@ export const attendance = pgTable(
   },
   (table) => [unique().on(table.empId, table.attendanceDate)],
 );
+
+export const attendanceRequest = pgTable("attendance_request", {
+  id: serial("id").primaryKey(),
+  empId: integer("emp_id")
+    .notNull()
+    .references(() => Employee.userId),
+  fromDate: date("from_date").notNull(),
+  toDate: date("to_date").notNull(),
+  requestType: varchar("request_type", { length: 120 }).notNull(),
+  isHalfDay: boolean("is_half_day").default(false).notNull(),
+  explanation: text("explanation").notNull(),
+  status: attendanceRequestStatusEnum("status").default("pending").notNull(),
+  reviewedBy: integer("reviewed_by").references(() => users.id),
+  reviewedAt: timestamp("reviewed_at"),
+  rejectionReason: text("rejection_reason"),
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
 
 // Shift Type Table
 export const shiftType = pgTable("shift_type", {

@@ -6,6 +6,7 @@ import { attendance, users, Employee } from "../db/schema.js";
 import { db } from "../db/connection.js";
 import { and, eq } from "drizzle-orm";
 import { ShiftAssignmentRepository } from "../repository/shiftAssignment.repo.js";
+import * as XLSX from "xlsx";
 
 type AttendanceStatus = typeof attendance.$inferSelect.status;
 type LeaveType = NonNullable<typeof attendance.$inferSelect.leaveType>;
@@ -889,6 +890,469 @@ export class AttendanceService {
             ? "The assigned shift has ended"
             : null,
       record: null,
+    };
+  }
+
+  private formatEmployeeCode(userId: number) {
+    return `EMP-${String(userId).padStart(3, "0")}`;
+  }
+
+  private parseEmployeeCode(raw: string): number | null {
+    const value = String(raw || "").trim().toUpperCase();
+    if (!value) return null;
+    if (/^\d+$/.test(value)) return Number(value);
+    const match = value.match(/^EMP[-_\s]?0*(\d+)$/i);
+    if (!match) return null;
+    const id = Number(match[1]);
+    return Number.isInteger(id) && id > 0 ? id : null;
+  }
+
+  private parseTemplateDate(raw: string): string | null {
+    const value = String(raw || "").trim();
+    if (!value) return null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      try {
+        return validateAttendanceDate(value);
+      } catch {
+        return null;
+      }
+    }
+
+    const match = value.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+    if (!match) return null;
+    const day = Number(match[1]);
+    const month = Number(match[2]);
+    const year = Number(match[3]);
+    const iso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    try {
+      return validateAttendanceDate(iso);
+    } catch {
+      return null;
+    }
+  }
+
+  private parseTemplateTime(date: string, raw: string): Date | null {
+    const value = String(raw || "").trim();
+    if (!value) return null;
+
+    const match = value.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+    if (!match) return null;
+
+    let hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    const meridian = match[3]?.toUpperCase();
+
+    if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return null;
+    if (minutes < 0 || minutes > 59) return null;
+
+    if (meridian) {
+      if (hours < 1 || hours > 12) return null;
+      if (meridian === "PM" && hours < 12) hours += 12;
+      if (meridian === "AM" && hours === 12) hours = 0;
+    } else if (hours < 0 || hours > 23) {
+      return null;
+    }
+
+    return new Date(
+      `${date}T${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:00+05:30`,
+    );
+  }
+
+  private mapImportStatus(raw: string): {
+    status: AttendanceStatus;
+    period: string | null;
+    leaveType: LeaveType | null;
+    shift: string | null;
+  } | null {
+    const normalized = String(raw || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_-]+/g, " ");
+
+    if (normalized === "present") {
+      return { status: "present", period: "full_time", leaveType: null, shift: null };
+    }
+    if (normalized === "absent") {
+      return { status: "absent", period: "less_than_half_day", leaveType: null, shift: null };
+    }
+    if (normalized === "half day" || normalized === "halfday") {
+      return { status: "present", period: "half_day", leaveType: null, shift: null };
+    }
+    if (normalized === "leave" || normalized === "on leave") {
+      return { status: "on_leave", period: null, leaveType: "casual", shift: null };
+    }
+    if (normalized === "wfh" || normalized === "work from home") {
+      return { status: "present", period: "full_time", leaveType: null, shift: "WFH" };
+    }
+    if (normalized === "holiday") {
+      return { status: "absent", period: "less_than_half_day", leaveType: null, shift: "Holiday" };
+    }
+    return null;
+  }
+
+  private eachDateInclusive(fromDate: string, toDate: string): string[] {
+    const dates: string[] = [];
+    let cursor = fromDate;
+    while (cursor <= toDate) {
+      dates.push(cursor);
+      cursor = addDays(cursor, 1);
+      if (dates.length > 366) break;
+    }
+    return dates;
+  }
+
+  private normalizeHeader(value: unknown) {
+    return String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_-]+/g, " ");
+  }
+
+  private readImportRows(fileBuffer: Buffer, fileName: string) {
+    const extension = fileName.split(".").pop()?.toLowerCase() || "";
+    if (!["csv", "xls", "xlsx"].includes(extension)) {
+      throw new Error("Invalid file format. Upload a .csv, .xls, or .xlsx file");
+    }
+
+    const workbook = XLSX.read(fileBuffer, { type: "buffer", cellDates: true });
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) throw new Error("The uploaded file is empty");
+
+    const sheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+      defval: "",
+      raw: false,
+    });
+
+    if (!rows.length) throw new Error("The uploaded file has no data rows");
+    return rows;
+  }
+
+  async generateImportTemplate(
+    currentUser: typeof users.$inferSelect,
+    fromDate?: string,
+    toDate?: string,
+  ) {
+    if (!currentUser.isAdmin) {
+      throw new Error("Only admins can download attendance templates");
+    }
+
+    const headers = [
+      "Employee ID",
+      "Date",
+      "Check-In Time",
+      "Check-Out Time",
+      "Status",
+      "Remarks",
+    ];
+
+    const sampleRows: Array<Array<string>> = [
+      headers,
+      ["EMP-001", "20-07-2026", "09:15 AM", "06:15 PM", "Present", "Optional notes"],
+    ];
+
+    if (fromDate && toDate) {
+      const start = validateAttendanceDate(fromDate);
+      const end = validateAttendanceDate(toDate);
+      if (start > end) throw new Error("fromDate cannot be after toDate");
+
+      const employees = await db
+        .select({ userId: Employee.userId, name: users.name })
+        .from(Employee)
+        .innerJoin(users, eq(users.id, Employee.userId))
+        .where(
+          and(
+            eq(Employee.adminId, currentUser.id),
+            eq(users.isDeleted, false),
+            eq(users.active, true),
+          ),
+        );
+
+      const dates = this.eachDateInclusive(start, end);
+      sampleRows.length = 0;
+      sampleRows.push(headers);
+
+      for (const employee of employees) {
+        for (const date of dates) {
+          const [year, month, day] = date.split("-");
+          sampleRows.push([
+            this.formatEmployeeCode(employee.userId),
+            `${day}-${month}-${year}`,
+            "",
+            "",
+            "",
+            "",
+          ]);
+        }
+      }
+
+      if (sampleRows.length === 1) {
+        sampleRows.push(["EMP-001", `${dates[0].slice(8, 10)}-${dates[0].slice(5, 7)}-${dates[0].slice(0, 4)}`, "09:15 AM", "06:15 PM", "Present", ""]);
+      }
+    }
+
+    const workbook = XLSX.utils.book_new();
+    const sheet = XLSX.utils.aoa_to_sheet(sampleRows);
+    XLSX.utils.book_append_sheet(workbook, sheet, "Attendance");
+
+    const instructions = XLSX.utils.aoa_to_sheet([
+      ["Column", "Format / Allowed Values"],
+      ["Employee ID", "EMP-001 (matches employee user id)"],
+      ["Date", "DD-MM-YYYY"],
+      ["Check-In Time", "hh:mm AM/PM (required for Present / Half Day / WFH)"],
+      ["Check-Out Time", "hh:mm AM/PM (optional)"],
+      ["Status", "Present, Absent, Half Day, Leave, WFH, Holiday"],
+      ["Remarks", "Optional"],
+    ]);
+    XLSX.utils.book_append_sheet(workbook, instructions, "Instructions");
+
+    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
+    return {
+      fileName: `attendance-template-${fromDate || "blank"}-${toDate || "sample"}.xlsx`,
+      mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      buffer,
+    };
+  }
+
+  async importAttendanceFile(
+    file: { buffer: Buffer; originalname: string; size: number } | undefined,
+    currentUser: typeof users.$inferSelect,
+    options: { fromDate?: string; toDate?: string } = {},
+  ) {
+    if (!currentUser.isAdmin) {
+      throw new Error("Only admins can import attendance");
+    }
+    if (!file?.buffer?.length) {
+      throw new Error("Please upload an attendance file");
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      throw new Error("File size must be 5 MB or less");
+    }
+
+    const fromDate = options.fromDate ? validateAttendanceDate(options.fromDate) : null;
+    const toDate = options.toDate ? validateAttendanceDate(options.toDate) : null;
+    if (fromDate && toDate && fromDate > toDate) {
+      throw new Error("fromDate cannot be after toDate");
+    }
+
+    const today = getTodayDateString();
+    const rows = this.readImportRows(file.buffer, file.originalname);
+
+    const orgEmployees = await db
+      .select({ userId: Employee.userId, name: users.name })
+      .from(Employee)
+      .innerJoin(users, eq(users.id, Employee.userId))
+      .where(
+        and(
+          eq(Employee.adminId, currentUser.id),
+          eq(users.isDeleted, false),
+          eq(users.active, true),
+        ),
+      );
+    const employeeMap = new Map(orgEmployees.map((item) => [item.userId, item.name || ""]));
+
+    const headerAliases: Record<string, string[]> = {
+      employeeId: ["employee id", "employeeid", "emp id", "empid", "employee code"],
+      date: ["date", "attendance date", "attendance date"],
+      checkIn: ["check in time", "check-in time", "checkin time", "check in", "checkin"],
+      checkOut: ["check out time", "check-out time", "checkout time", "check out", "checkout"],
+      status: ["status", "attendance status"],
+      remarks: ["remarks", "remark", "notes", "note"],
+    };
+
+    const firstRow = rows[0] || {};
+    const availableHeaders = Object.keys(firstRow).map((key) => this.normalizeHeader(key));
+    const resolveKey = (aliases: string[]) =>
+      Object.keys(firstRow).find((key) => aliases.includes(this.normalizeHeader(key)));
+
+    const employeeIdKey = resolveKey(headerAliases.employeeId);
+    const dateKey = resolveKey(headerAliases.date);
+    const checkInColumn = resolveKey(headerAliases.checkIn);
+    const checkOutColumn = resolveKey(headerAliases.checkOut);
+    const statusKey = resolveKey(headerAliases.status);
+    const remarksKey = resolveKey(headerAliases.remarks);
+
+    const requiredMissing = [
+      !employeeIdKey ? "Employee ID" : null,
+      !dateKey ? "Date" : null,
+      !statusKey ? "Status" : null,
+    ].filter(Boolean);
+
+    if (requiredMissing.length) {
+      throw new Error(
+        `Missing required columns: ${requiredMissing.join(", ")}. Found: ${availableHeaders.join(", ") || "none"}`,
+      );
+    }
+
+    type ImportError = {
+      row: number;
+      employeeId: string;
+      date: string;
+      error: string;
+    };
+
+    const errors: ImportError[] = [];
+    const seen = new Set<string>();
+    let successCount = 0;
+
+    for (let index = 0; index < rows.length; index++) {
+      const row = rows[index];
+      const excelRow = index + 2;
+      const employeeIdRaw = String(row[employeeIdKey!] ?? "").trim();
+      const dateRaw = String(row[dateKey!] ?? "").trim();
+      const statusRaw = String(row[statusKey!] ?? "").trim();
+      const checkInRaw = String((checkInColumn ? row[checkInColumn] : "") ?? "").trim();
+      const checkOutRaw = String((checkOutColumn ? row[checkOutColumn] : "") ?? "").trim();
+      const remarks = String((remarksKey ? row[remarksKey] : "") ?? "").trim();
+
+      if (!employeeIdRaw && !dateRaw && !statusRaw && !checkInRaw && !checkOutRaw) {
+        continue;
+      }
+
+      const pushError = (error: string) => {
+        errors.push({
+          row: excelRow,
+          employeeId: employeeIdRaw || "-",
+          date: dateRaw || "-",
+          error,
+        });
+      };
+
+      const empId = this.parseEmployeeCode(employeeIdRaw);
+      if (!empId) {
+        pushError("Invalid Employee ID. Use EMP-001 format");
+        continue;
+      }
+
+      if (!employeeMap.has(empId)) {
+        pushError("Employee ID not found in your organization");
+        continue;
+      }
+
+      const attendanceDate = this.parseTemplateDate(dateRaw);
+      if (!attendanceDate) {
+        pushError("Invalid date. Use DD-MM-YYYY");
+        continue;
+      }
+
+      if (attendanceDate > today) {
+        pushError("Future dates are not allowed");
+        continue;
+      }
+
+      if (fromDate && attendanceDate < fromDate) {
+        pushError(`Date is before selected from date (${fromDate})`);
+        continue;
+      }
+
+      if (toDate && attendanceDate > toDate) {
+        pushError(`Date is after selected to date (${toDate})`);
+        continue;
+      }
+
+      const mapped = this.mapImportStatus(statusRaw);
+      if (!mapped) {
+        pushError("Invalid status. Use Present, Absent, Half Day, Leave, WFH, or Holiday");
+        continue;
+      }
+
+      const checkIn = this.parseTemplateTime(attendanceDate, checkInRaw);
+      const checkOut = this.parseTemplateTime(attendanceDate, checkOutRaw);
+      const needsCheckIn =
+        mapped.status === "present" && mapped.shift !== "Holiday";
+
+      if (checkInRaw && !checkIn) {
+        pushError("Invalid Check-In Time. Use hh:mm AM/PM");
+        continue;
+      }
+      if (checkOutRaw && !checkOut) {
+        pushError("Invalid Check-Out Time. Use hh:mm AM/PM");
+        continue;
+      }
+      if (needsCheckIn && !checkIn) {
+        pushError("Check-In Time is required for Present, Half Day, and WFH");
+        continue;
+      }
+      if (checkIn && checkOut && checkOut <= checkIn) {
+        pushError("Check-Out Time must be after Check-In Time");
+        continue;
+      }
+
+      const duplicateKey = `${empId}|${attendanceDate}`;
+      if (seen.has(duplicateKey)) {
+        pushError("Duplicate record for the same Employee ID and Date in this file");
+        continue;
+      }
+      seen.add(duplicateKey);
+
+      try {
+        const existing = await this.attendanceRepo.getAttendanceByEmpAndDate(
+          empId,
+          attendanceDate,
+        );
+
+        const payload = {
+          status: mapped.status,
+          period: mapped.period,
+          leaveType: mapped.leaveType,
+          shift: mapped.shift || (remarks ? remarks.slice(0, 255) : null),
+          checkIn:
+            checkIn ||
+            (mapped.status === "present" && mapped.shift !== "Holiday"
+              ? getFullDayTimes(attendanceDate).checkIn
+              : null),
+          checkOut:
+            checkOut ||
+            (mapped.status === "present" && mapped.period === "full_time" && mapped.shift !== "Holiday"
+              ? getFullDayTimes(attendanceDate).checkOut
+              : null),
+          lateEntry: false,
+          earlyExit: false,
+          markedBy: currentUser.id,
+        };
+
+        if (existing.length > 0) {
+          await this.attendanceRepo.updateAttendance(existing[0].id, payload);
+        } else {
+          const series = await this.attendanceRepo.generateNextSeries();
+          await this.attendanceRepo.createAttendance({
+            series,
+            empId,
+            attendanceDate,
+            isDeleted: false,
+            ...payload,
+          });
+        }
+        successCount += 1;
+      } catch (error: any) {
+        pushError(error?.message || "Failed to save attendance row");
+      }
+    }
+
+    const totalRecords = successCount + errors.length;
+    const errorLogCsv = [
+      "Row,Employee ID,Date,Error",
+      ...errors.map(
+        (item) =>
+          `${item.row},"${item.employeeId.replace(/"/g, '""')}","${item.date.replace(/"/g, '""')}","${item.error.replace(/"/g, '""')}"`,
+      ),
+    ].join("\n");
+
+    return {
+      success: true,
+      message:
+        errors.length === 0
+          ? "Attendance imported successfully"
+          : successCount > 0
+            ? "Attendance imported with some errors"
+            : "Attendance import failed",
+      data: {
+        totalRecords,
+        successCount,
+        failedCount: errors.length,
+        errors,
+        errorLogCsv,
+      },
     };
   }
 }
