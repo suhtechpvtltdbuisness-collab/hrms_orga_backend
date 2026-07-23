@@ -907,12 +907,130 @@ export class AttendanceService {
     return Number.isInteger(id) && id > 0 ? id : null;
   }
 
-  private parseTemplateDate(raw: string): string | null {
+  private async listImportableEmployees(currentUser: typeof users.$inferSelect) {
+    let adminId = currentUser.id;
+    if (currentUser.roleId === 2) {
+      const [self] = await db
+        .select({ adminId: Employee.adminId })
+        .from(Employee)
+        .where(eq(Employee.userId, currentUser.id))
+        .limit(1);
+      if (self?.adminId) adminId = self.adminId;
+    }
+
+    const conditions = [
+      eq(users.isDeleted, false),
+      eq(users.active, true),
+    ];
+
+    if (currentUser.roleId !== 0 && currentUser.organizationId) {
+      conditions.push(eq(users.organizationId, currentUser.organizationId));
+    } else if (currentUser.roleId !== 0) {
+      conditions.push(eq(Employee.adminId, adminId));
+    }
+
+    return db
+      .select({
+        employeePk: Employee.id,
+        userId: Employee.userId,
+        adminId: Employee.adminId,
+        name: users.name,
+        email: users.email,
+      })
+      .from(Employee)
+      .innerJoin(users, eq(users.id, Employee.userId))
+      .where(and(...conditions));
+  }
+
+  private buildEmployeeLookup(
+    employees: Array<{
+      employeePk: number;
+      userId: number;
+      name: string | null;
+      email: string | null;
+    }>,
+  ) {
+    const byUserId = new Map<number, { userId: number; name: string }>();
+    const byCode = new Map<string, number>();
+
+    const registerCode = (code: string, userId: number) => {
+      byCode.set(code.trim().toUpperCase().replace(/[\s_-]/g, ""), userId);
+    };
+
+    for (const employee of employees) {
+      byUserId.set(employee.userId, {
+        userId: employee.userId,
+        name: employee.name || "",
+      });
+
+      registerCode(String(employee.userId), employee.userId);
+      registerCode(this.formatEmployeeCode(employee.userId), employee.userId);
+      registerCode(`EMP${employee.userId}`, employee.userId);
+      registerCode(`EMP${String(employee.userId).padStart(3, "0")}`, employee.userId);
+      registerCode(`EMP${String(employee.userId).padStart(4, "0")}`, employee.userId);
+      registerCode(String(employee.employeePk), employee.userId);
+      registerCode(`EMP${employee.employeePk}`, employee.userId);
+      registerCode(`EMP-${employee.employeePk}`, employee.userId);
+      if (employee.email) registerCode(employee.email, employee.userId);
+    }
+
+    return { byUserId, byCode };
+  }
+
+  private resolveImportEmployeeId(
+    raw: string,
+    lookup: ReturnType<AttendanceService["buildEmployeeLookup"]>,
+  ): number | null {
+    const normalized = String(raw || "")
+      .trim()
+      .toUpperCase()
+      .replace(/[\s_-]/g, "");
+    if (!normalized) return null;
+
+    if (lookup.byCode.has(normalized)) {
+      return lookup.byCode.get(normalized)!;
+    }
+
+    const parsed = this.parseEmployeeCode(raw);
+    if (parsed && lookup.byUserId.has(parsed)) {
+      return parsed;
+    }
+
+    return null;
+  }
+
+  private parseTemplateDate(raw: unknown): string | null {
+    if (raw === null || raw === undefined || raw === "") return null;
+
+    if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
+      const year = raw.getFullYear();
+      const month = String(raw.getMonth() + 1).padStart(2, "0");
+      const day = String(raw.getDate()).padStart(2, "0");
+      if (year < 1970) return null;
+      try {
+        return validateAttendanceDate(`${year}-${month}-${day}`);
+      } catch {
+        return null;
+      }
+    }
+
+    if (typeof raw === "number" && Number.isFinite(raw)) {
+      const parsed = XLSX.SSF?.parse_date_code?.(raw);
+      if (parsed?.y && parsed?.m && parsed?.d) {
+        const iso = `${parsed.y}-${String(parsed.m).padStart(2, "0")}-${String(parsed.d).padStart(2, "0")}`;
+        try {
+          return validateAttendanceDate(iso);
+        } catch {
+          return null;
+        }
+      }
+    }
+
     const value = String(raw || "").trim();
     if (!value) return null;
-    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    if (/^\d{4}-\d{2}-\d{2}/.test(value)) {
       try {
-        return validateAttendanceDate(value);
+        return validateAttendanceDate(value.slice(0, 10));
       } catch {
         return null;
       }
@@ -931,30 +1049,67 @@ export class AttendanceService {
     }
   }
 
-  private parseTemplateTime(date: string, raw: string): Date | null {
-    const value = String(raw || "").trim();
-    if (!value) return null;
+  private parseTemplateTime(date: string, raw: unknown): Date | null {
+    if (raw === null || raw === undefined || raw === "") return null;
 
-    const match = value.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
-    if (!match) return null;
+    let hours = 0;
+    let minutes = 0;
+    let seconds = 0;
+    let parsed = false;
 
-    let hours = Number(match[1]);
-    const minutes = Number(match[2]);
-    const meridian = match[3]?.toUpperCase();
+    if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
+      hours = raw.getHours();
+      minutes = raw.getMinutes();
+      seconds = raw.getSeconds();
+      parsed = true;
+    } else if (typeof raw === "number" && Number.isFinite(raw)) {
+      const fraction = raw > 1 ? raw % 1 : raw;
+      if (fraction < 0 || fraction >= 1) return null;
+      const totalSeconds = Math.round(fraction * 24 * 60 * 60);
+      hours = Math.floor(totalSeconds / 3600) % 24;
+      minutes = Math.floor((totalSeconds % 3600) / 60);
+      seconds = totalSeconds % 60;
+      parsed = true;
+    } else {
+      const value = String(raw)
+        .trim()
+        .replace(/\u00a0/g, " ");
 
-    if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return null;
-    if (minutes < 0 || minutes > 59) return null;
+      const match = value.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i);
+      if (match) {
+        hours = Number(match[1]);
+        minutes = Number(match[2]);
+        seconds = Number(match[3] || 0);
+        const meridian = match[4]?.toUpperCase();
 
-    if (meridian) {
-      if (hours < 1 || hours > 12) return null;
-      if (meridian === "PM" && hours < 12) hours += 12;
-      if (meridian === "AM" && hours === 12) hours = 0;
-    } else if (hours < 0 || hours > 23) {
-      return null;
+        if (!Number.isInteger(hours) || !Number.isInteger(minutes) || !Number.isInteger(seconds)) {
+          return null;
+        }
+        if (minutes < 0 || minutes > 59 || seconds < 0 || seconds > 59) return null;
+
+        if (meridian) {
+          if (hours < 1 || hours > 12) return null;
+          if (meridian === "PM" && hours < 12) hours += 12;
+          if (meridian === "AM" && hours === 12) hours = 0;
+        } else if (hours < 0 || hours > 23) {
+          return null;
+        }
+        parsed = true;
+      } else {
+        const asDate = new Date(value);
+        if (!Number.isNaN(asDate.getTime()) && /\d/.test(value) && /:/.test(value)) {
+          hours = asDate.getHours();
+          minutes = asDate.getMinutes();
+          seconds = asDate.getSeconds();
+          parsed = true;
+        }
+      }
     }
 
+    if (!parsed) return null;
+
     return new Date(
-      `${date}T${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:00+05:30`,
+      `${date}T${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}+05:30`,
     );
   }
 
@@ -1014,14 +1169,20 @@ export class AttendanceService {
       throw new Error("Invalid file format. Upload a .csv, .xls, or .xlsx file");
     }
 
-    const workbook = XLSX.read(fileBuffer, { type: "buffer", cellDates: true });
+    const workbook = XLSX.read(fileBuffer, {
+      type: "buffer",
+      cellDates: true,
+      cellNF: false,
+      cellText: false,
+    });
     const sheetName = workbook.SheetNames[0];
     if (!sheetName) throw new Error("The uploaded file is empty");
 
     const sheet = workbook.Sheets[sheetName];
     const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
       defval: "",
-      raw: false,
+      raw: true,
+      dateNF: "dd-mm-yyyy",
     });
 
     if (!rows.length) throw new Error("The uploaded file has no data rows");
@@ -1056,17 +1217,7 @@ export class AttendanceService {
       const end = validateAttendanceDate(toDate);
       if (start > end) throw new Error("fromDate cannot be after toDate");
 
-      const employees = await db
-        .select({ userId: Employee.userId, name: users.name })
-        .from(Employee)
-        .innerJoin(users, eq(users.id, Employee.userId))
-        .where(
-          and(
-            eq(Employee.adminId, currentUser.id),
-            eq(users.isDeleted, false),
-            eq(users.active, true),
-          ),
-        );
+      const employees = await this.listImportableEmployees(currentUser);
 
       const dates = this.eachDateInclusive(start, end);
       sampleRows.length = 0;
@@ -1097,10 +1248,10 @@ export class AttendanceService {
 
     const instructions = XLSX.utils.aoa_to_sheet([
       ["Column", "Format / Allowed Values"],
-      ["Employee ID", "EMP-001 (matches employee user id)"],
+      ["Employee ID", "Use EMP-079 from Get Template (also accepts EMP079 / 79)"],
       ["Date", "DD-MM-YYYY"],
-      ["Check-In Time", "hh:mm AM/PM (required for Present / Half Day / WFH)"],
-      ["Check-Out Time", "hh:mm AM/PM (optional)"],
+      ["Check-In Time", "09:15 AM or Excel time value (required for Present / Half Day / WFH)"],
+      ["Check-Out Time", "06:15 PM or Excel time value (optional)"],
       ["Status", "Present, Absent, Half Day, Leave, WFH, Holiday"],
       ["Remarks", "Optional"],
     ]);
@@ -1138,18 +1289,8 @@ export class AttendanceService {
     const today = getTodayDateString();
     const rows = this.readImportRows(file.buffer, file.originalname);
 
-    const orgEmployees = await db
-      .select({ userId: Employee.userId, name: users.name })
-      .from(Employee)
-      .innerJoin(users, eq(users.id, Employee.userId))
-      .where(
-        and(
-          eq(Employee.adminId, currentUser.id),
-          eq(users.isDeleted, false),
-          eq(users.active, true),
-        ),
-      );
-    const employeeMap = new Map(orgEmployees.map((item) => [item.userId, item.name || ""]));
+    const orgEmployees = await this.listImportableEmployees(currentUser);
+    const employeeLookup = this.buildEmployeeLookup(orgEmployees);
 
     const headerAliases: Record<string, string[]> = {
       employeeId: ["employee id", "employeeid", "emp id", "empid", "employee code"],
@@ -1199,13 +1340,24 @@ export class AttendanceService {
       const row = rows[index];
       const excelRow = index + 2;
       const employeeIdRaw = String(row[employeeIdKey!] ?? "").trim();
-      const dateRaw = String(row[dateKey!] ?? "").trim();
+      const dateCell = dateKey ? row[dateKey] : "";
       const statusRaw = String(row[statusKey!] ?? "").trim();
-      const checkInRaw = String((checkInColumn ? row[checkInColumn] : "") ?? "").trim();
-      const checkOutRaw = String((checkOutColumn ? row[checkOutColumn] : "") ?? "").trim();
+      const checkInCell = checkInColumn ? row[checkInColumn] : "";
+      const checkOutCell = checkOutColumn ? row[checkOutColumn] : "";
       const remarks = String((remarksKey ? row[remarksKey] : "") ?? "").trim();
+      const dateDisplay = String(dateCell ?? "").trim() || "-";
+      const hasCheckIn = !(
+        checkInCell === null ||
+        checkInCell === undefined ||
+        checkInCell === ""
+      );
+      const hasCheckOut = !(
+        checkOutCell === null ||
+        checkOutCell === undefined ||
+        checkOutCell === ""
+      );
 
-      if (!employeeIdRaw && !dateRaw && !statusRaw && !checkInRaw && !checkOutRaw) {
+      if (!employeeIdRaw && !dateDisplay && !statusRaw && !hasCheckIn && !hasCheckOut) {
         continue;
       }
 
@@ -1213,23 +1365,22 @@ export class AttendanceService {
         errors.push({
           row: excelRow,
           employeeId: employeeIdRaw || "-",
-          date: dateRaw || "-",
+          date: dateDisplay,
           error,
         });
       };
 
-      const empId = this.parseEmployeeCode(employeeIdRaw);
+      const empId = this.resolveImportEmployeeId(employeeIdRaw, employeeLookup);
       if (!empId) {
-        pushError("Invalid Employee ID. Use EMP-001 format");
+        const hint =
+          orgEmployees.length > 0
+            ? ` Use an ID from Get Template (e.g. ${this.formatEmployeeCode(orgEmployees[0].userId)}).`
+            : " No active employees were found for your organization.";
+        pushError(`Employee ID not found in your organization.${hint}`);
         continue;
       }
 
-      if (!employeeMap.has(empId)) {
-        pushError("Employee ID not found in your organization");
-        continue;
-      }
-
-      const attendanceDate = this.parseTemplateDate(dateRaw);
+      const attendanceDate = this.parseTemplateDate(dateCell);
       if (!attendanceDate) {
         pushError("Invalid date. Use DD-MM-YYYY");
         continue;
@@ -1256,17 +1407,17 @@ export class AttendanceService {
         continue;
       }
 
-      const checkIn = this.parseTemplateTime(attendanceDate, checkInRaw);
-      const checkOut = this.parseTemplateTime(attendanceDate, checkOutRaw);
+      const checkIn = this.parseTemplateTime(attendanceDate, checkInCell);
+      const checkOut = this.parseTemplateTime(attendanceDate, checkOutCell);
       const needsCheckIn =
         mapped.status === "present" && mapped.shift !== "Holiday";
 
-      if (checkInRaw && !checkIn) {
-        pushError("Invalid Check-In Time. Use hh:mm AM/PM");
+      if (hasCheckIn && !checkIn) {
+        pushError("Invalid Check-In Time. Use hh:mm AM/PM (Excel time cells are also accepted)");
         continue;
       }
-      if (checkOutRaw && !checkOut) {
-        pushError("Invalid Check-Out Time. Use hh:mm AM/PM");
+      if (hasCheckOut && !checkOut) {
+        pushError("Invalid Check-Out Time. Use hh:mm AM/PM (Excel time cells are also accepted)");
         continue;
       }
       if (needsCheckIn && !checkIn) {
