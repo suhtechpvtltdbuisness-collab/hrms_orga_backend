@@ -15,10 +15,6 @@ interface MailOptions {
   replyTo?: string;
 }
 
-const ipv4Lookup: SMTPTransport.Options["dns"] = (hostname, options, callback) => {
-  dns.lookup(hostname, { ...(options || {}), family: 4 }, callback);
-};
-
 const getLogoPath = (): string => {
   if (process.env.LOGO_PATH) {
     return process.env.LOGO_PATH;
@@ -67,14 +63,14 @@ const getSmtpConfig = () => {
 const buildTransport = (port: number, secure: boolean) => {
   const { host, user, pass } = getSmtpConfig();
 
-  return nodemailer.createTransport({
-    host,
+  const options: SMTPTransport.Options = {
+    host: host || "",
     port,
     secure,
     requireTLS: !secure,
     auth: {
-      user,
-      pass,
+      user: user || "",
+      pass: pass || "",
     },
     connectionTimeout: 20000,
     greetingTimeout: 20000,
@@ -83,10 +79,9 @@ const buildTransport = (port: number, secure: boolean) => {
       minVersion: "TLSv1.2",
       servername: host,
     },
-    dns: {
-      lookup: ipv4Lookup,
-    },
-  });
+  };
+
+  return nodemailer.createTransport(options);
 };
 
 const getTransporterCandidates = () => {
