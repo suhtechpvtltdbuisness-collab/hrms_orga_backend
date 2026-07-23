@@ -154,8 +154,25 @@ export class SubscriptionRepository {
   }
 
   async createPayment(data: typeof PlainPayment.$inferInsert) {
+    if (data.paymentId) {
+      const existing = await this.getPaymentByPaymentId(data.paymentId);
+      if (existing) {
+        throw new Error("This payment has already been processed");
+      }
+    }
+
     const [payment] = await db.insert(PlainPayment).values(data).returning();
     return payment;
+  }
+
+  async getPaymentByPaymentId(paymentId: string) {
+    const [payment] = await db
+      .select()
+      .from(PlainPayment)
+      .where(eq(PlainPayment.paymentId, paymentId))
+      .limit(1);
+
+    return payment ?? null;
   }
 
   async getAllSubscriptionsWithUsers(page: number, limit: number, search?: string) {

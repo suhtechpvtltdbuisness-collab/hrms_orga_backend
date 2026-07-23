@@ -78,3 +78,33 @@ export const verifyRazorpayWebhookSignature = (
 
   return expected === signature;
 };
+
+export type RazorpayOrderEntity = {
+  id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  notes?: Record<string, string>;
+};
+
+export type RazorpayPaymentEntity = {
+  id: string;
+  order_id: string | null;
+  amount: number;
+  currency: string;
+  status: string;
+};
+
+export const fetchRazorpayOrder = async (
+  orderId: string,
+): Promise<RazorpayOrderEntity> => {
+  const razorpay = getRazorpayInstance();
+  return (await razorpay.orders.fetch(orderId)) as RazorpayOrderEntity;
+};
+
+export const fetchRazorpayPayment = async (
+  paymentId: string,
+): Promise<RazorpayPaymentEntity> => {
+  const razorpay = getRazorpayInstance();
+  return (await razorpay.payments.fetch(paymentId)) as RazorpayPaymentEntity;
+};

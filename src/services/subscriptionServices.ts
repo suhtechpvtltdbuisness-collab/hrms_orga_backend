@@ -11,6 +11,8 @@ import { SubscriptionRepository } from "../repository/subscription.repo.js";
 import {
   getRazorpayInstance,
   getRazorpayKeyId,
+  fetchRazorpayOrder,
+  fetchRazorpayPayment,
   verifyRazorpayPaymentSignature,
   verifyRazorpaySubscriptionSignature,
   verifyRazorpayWebhookSignature,
@@ -319,6 +321,62 @@ export class SubscriptionService {
     }
   }
 
+  private async assertPaymentNotReplayed(paymentId: string) {
+    const existing = await this.repo.getPaymentByPaymentId(paymentId);
+    if (existing) {
+      throw new Error("This payment has already been processed");
+    }
+  }
+
+  private async validatePaidRazorpayOrder(params: {
+    userId: number;
+    razorpayOrderId: string;
+    razorpayPaymentId: string;
+    expectedAmountPaise: number;
+    expectedNotes: Record<string, string>;
+  }) {
+    const payment = await fetchRazorpayPayment(params.razorpayPaymentId);
+
+    if (payment.order_id !== params.razorpayOrderId) {
+      throw new Error("Payment does not belong to this order");
+    }
+
+    if (!["captured", "authorized"].includes(payment.status)) {
+      throw new Error(`Payment is not completed. Status: ${payment.status}`);
+    }
+
+    if (payment.amount !== params.expectedAmountPaise) {
+      throw new Error("Payment amount does not match the purchase");
+    }
+
+    const order = await fetchRazorpayOrder(params.razorpayOrderId);
+
+    if (order.status !== "paid") {
+      throw new Error(`Order is not paid. Status: ${order.status}`);
+    }
+
+    if (order.amount !== params.expectedAmountPaise) {
+      throw new Error("Order amount does not match the purchase");
+    }
+
+    if (order.currency !== "INR") {
+      throw new Error("Invalid order currency");
+    }
+
+    const notes = order.notes || {};
+    if (notes.userId !== String(params.userId)) {
+      throw new Error("Order does not belong to this user");
+    }
+
+    for (const [key, value] of Object.entries(params.expectedNotes)) {
+      if (notes[key] !== value) {
+        throw new Error("Order details do not match the purchase");
+      }
+    }
+
+    return order;
+  }
+
   async getOrCreateRazorpayStarterPlan(): Promise<string> {
     const managedStarter = await this.repo.getAnyPlanDefinitionByType("starter_pack");
     if (managedStarter?.razorpayPlanId && managedStarter.active && !managedStarter.isDeleted) {
@@ -495,10 +553,16 @@ export class SubscriptionService {
       throw new Error("Subscription verification failed");
     }
 
+    await this.assertPaymentNotReplayed(razorpayPaymentId);
+
     const razorpay = getRazorpayInstance();
     const rzSubscription = (await razorpay.subscriptions.fetch(
       razorpaySubscriptionId,
-    )) as { status?: string; plan_id?: string };
+    )) as { status?: string; plan_id?: string; notes?: { userId?: string } };
+
+    if (rzSubscription.notes?.userId && rzSubscription.notes.userId !== String(userId)) {
+      throw new Error("Subscription does not belong to this user");
+    }
 
     const validStatuses = ["authenticated", "active", "created"];
     if (!rzSubscription.status || !validStatuses.includes(rzSubscription.status)) {
@@ -507,11 +571,24 @@ export class SubscriptionService {
       );
     }
 
-    return this.activateTrialInDb(
+    const result = await this.activateTrialInDb(
       userId,
       razorpaySubscriptionId,
       rzSubscription.plan_id || "",
     );
+
+    if (result.plan?.id) {
+      await this.repo.createPayment({
+        plainId: result.plan.id,
+        status: "paid",
+        transactionId: razorpaySubscriptionId,
+        paymentMode: "online",
+        totalAmount: "0",
+        paymentId: razorpayPaymentId,
+      });
+    }
+
+    return result;
   }
 
   async handleRazorpayWebhook(rawBody: string, signature: string) {
@@ -666,6 +743,19 @@ export class SubscriptionService {
       throw new Error("Payment verification failed");
     }
 
+    await this.assertPaymentNotReplayed(razorpayPaymentId);
+
+    const expectedAmountPaise = config.priceInr * 100;
+    await this.validatePaidRazorpayOrder({
+      userId,
+      razorpayOrderId,
+      razorpayPaymentId,
+      expectedAmountPaise,
+      expectedNotes: {
+        planType: config.planType,
+      },
+    });
+
     const expiry = new Date();
     expiry.setDate(expiry.getDate() + config.durationDays);
 
@@ -717,7 +807,7 @@ export class SubscriptionService {
     razorpayOrderId: string,
     razorpayPaymentId: string,
     razorpaySignature: string,
-    quantity: number = 1,
+    _quantity: number = 1,
   ) {
     const config = getAddonConfig(itemType);
 
@@ -735,6 +825,8 @@ export class SubscriptionService {
       throw new Error("Payment verification failed");
     }
 
+    await this.assertPaymentNotReplayed(razorpayPaymentId);
+
     const activePlan = await this.repo.getActivePlanByUserId(userId);
     if (!activePlan || !this.isPlanActive(activePlan)) {
       throw new Error(
@@ -742,12 +834,49 @@ export class SubscriptionService {
       );
     }
 
+    const order = await fetchRazorpayOrder(razorpayOrderId);
+    const payment = await fetchRazorpayPayment(razorpayPaymentId);
+    const notes = order.notes || {};
+
+    if (notes.userId !== String(userId)) {
+      throw new Error("Order does not belong to this user");
+    }
+
+    if (notes.itemType !== itemType) {
+      throw new Error("Order details do not match the purchase");
+    }
+
+    const orderQuantityRaw = Number.parseInt(notes.quantity || "1", 10);
     const normalizedQuantity =
-      itemType === "extra_employee" ? Math.max(1, Math.floor(quantity || 1)) : 1;
+      itemType === "extra_employee"
+        ? Math.max(1, Number.isFinite(orderQuantityRaw) ? orderQuantityRaw : 1)
+        : 1;
+
     const planConfig = await this.getRuntimePlanConfig(activePlan.planType);
     const unitPriceInr = itemType === "extra_employee"
       ? (planConfig?.pricePerEmployeeInr ?? config.priceInr)
       : config.priceInr;
+    const expectedAmountPaise = unitPriceInr * normalizedQuantity * 100;
+
+    if (payment.order_id !== razorpayOrderId) {
+      throw new Error("Payment does not belong to this order");
+    }
+
+    if (!["captured", "authorized"].includes(payment.status)) {
+      throw new Error(`Payment is not completed. Status: ${payment.status}`);
+    }
+
+    if (order.status !== "paid") {
+      throw new Error(`Order is not paid. Status: ${order.status}`);
+    }
+
+    if (order.currency !== "INR") {
+      throw new Error("Invalid order currency");
+    }
+
+    if (payment.amount !== expectedAmountPaise || order.amount !== expectedAmountPaise) {
+      throw new Error("Payment amount does not match the purchase");
+    }
 
     let updatedPlan = activePlan;
     if (itemType === "extra_employee") {
