@@ -7,6 +7,16 @@ import { db } from "../db/connection.js";
 import { and, eq } from "drizzle-orm";
 import { ShiftAssignmentRepository } from "../repository/shiftAssignment.repo.js";
 import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
+
+const ATTENDANCE_IMPORT_STATUSES = [
+  "Present",
+  "Absent",
+  "Half Day",
+  "Leave",
+  "WFH",
+  "Holiday",
+] as const;
 
 type AttendanceStatus = typeof attendance.$inferSelect.status;
 type LeaveType = NonNullable<typeof attendance.$inferSelect.leaveType>;
@@ -283,15 +293,27 @@ export class AttendanceService {
 
   private adjustAttendanceStatus(record: any): any {
     if (!record) return record;
+
+    // Explicit non-duty statuses (import / admin mark) must not be rewritten
+    // just because check-in/out times happen to exist on the row.
+    if (record.status === "absent" || record.status === "on_leave") {
+      return {
+        ...record,
+        workedMinutes: null,
+        workedHours: null,
+        workedDuration: null,
+      };
+    }
+
     const todayStr = getTodayDateString();
     let adjustedRecord = record;
 
     // If they checked in but did not check out, and the attendance date is in the past
     if (record.checkIn && !record.checkOut && record.attendanceDate < todayStr) {
       adjustedRecord = {
-        ...record, 
-        status: "absent" as const, 
-        period: "less_than_half_day" 
+        ...record,
+        status: "absent" as const,
+        period: "less_than_half_day",
       };
     }
 
@@ -1207,10 +1229,7 @@ export class AttendanceService {
       "Remarks",
     ];
 
-    const sampleRows: Array<Array<string>> = [
-      headers,
-      ["EMP-001", "20-07-2026", "09:15 AM", "06:15 PM", "Present", "Optional notes"],
-    ];
+    const dataRows: Array<Array<string>> = [];
 
     if (fromDate && toDate) {
       const start = validateAttendanceDate(fromDate);
@@ -1218,15 +1237,12 @@ export class AttendanceService {
       if (start > end) throw new Error("fromDate cannot be after toDate");
 
       const employees = await this.listImportableEmployees(currentUser);
-
       const dates = this.eachDateInclusive(start, end);
-      sampleRows.length = 0;
-      sampleRows.push(headers);
 
       for (const employee of employees) {
         for (const date of dates) {
           const [year, month, day] = date.split("-");
-          sampleRows.push([
+          dataRows.push([
             this.formatEmployeeCode(employee.userId),
             `${day}-${month}-${year}`,
             "",
@@ -1237,27 +1253,72 @@ export class AttendanceService {
         }
       }
 
-      if (sampleRows.length === 1) {
-        sampleRows.push(["EMP-001", `${dates[0].slice(8, 10)}-${dates[0].slice(5, 7)}-${dates[0].slice(0, 4)}`, "09:15 AM", "06:15 PM", "Present", ""]);
+      if (dataRows.length === 0) {
+        dataRows.push([
+          "EMP-001",
+          `${dates[0].slice(8, 10)}-${dates[0].slice(5, 7)}-${dates[0].slice(0, 4)}`,
+          "09:15 AM",
+          "06:15 PM",
+          "Present",
+          "",
+        ]);
       }
+    } else {
+      dataRows.push([
+        "EMP-001",
+        "20-07-2026",
+        "09:15 AM",
+        "06:15 PM",
+        "Present",
+        "Optional notes",
+      ]);
     }
 
-    const workbook = XLSX.utils.book_new();
-    const sheet = XLSX.utils.aoa_to_sheet(sampleRows);
-    XLSX.utils.book_append_sheet(workbook, sheet, "Attendance");
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Attendance");
+    sheet.addRow(headers);
+    sheet.getRow(1).font = { bold: true };
+    for (const row of dataRows) sheet.addRow(row);
 
-    const instructions = XLSX.utils.aoa_to_sheet([
+    sheet.columns = [
+      { width: 14 },
+      { width: 14 },
+      { width: 16 },
+      { width: 16 },
+      { width: 14 },
+      { width: 28 },
+    ];
+
+    const lastDataRow = Math.max(dataRows.length + 1, 2);
+    const dropdownEnd = Math.max(lastDataRow, 500);
+    (sheet as ExcelJS.Worksheet & {
+      dataValidations: {
+        add: (range: string, rules: Record<string, unknown>) => void;
+      };
+    }).dataValidations.add(`E2:E${dropdownEnd}`, {
+      type: "list",
+      allowBlank: true,
+      showErrorMessage: true,
+      errorTitle: "Invalid Status",
+      error: `Choose one of: ${ATTENDANCE_IMPORT_STATUSES.join(", ")}`,
+      formulae: [`"${ATTENDANCE_IMPORT_STATUSES.join(",")}"`],
+    });
+
+    const instructions = workbook.addWorksheet("Instructions");
+    instructions.addRows([
       ["Column", "Format / Allowed Values"],
       ["Employee ID", "Use EMP-079 from Get Template (also accepts EMP079 / 79)"],
       ["Date", "DD-MM-YYYY"],
       ["Check-In Time", "09:15 AM or Excel time value (required for Present / Half Day / WFH)"],
       ["Check-Out Time", "06:15 PM or Excel time value (optional)"],
-      ["Status", "Present, Absent, Half Day, Leave, WFH, Holiday"],
+      ["Status", ATTENDANCE_IMPORT_STATUSES.join(", ")],
       ["Remarks", "Optional"],
     ]);
-    XLSX.utils.book_append_sheet(workbook, instructions, "Instructions");
+    instructions.getRow(1).font = { bold: true };
+    instructions.columns = [{ width: 16 }, { width: 70 }];
 
-    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
+    const arrayBuffer = await workbook.xlsx.writeBuffer();
+    const buffer = Buffer.from(arrayBuffer);
     return {
       fileName: `attendance-template-${fromDate || "blank"}-${toDate || "sample"}.xlsx`,
       mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1407,24 +1468,28 @@ export class AttendanceService {
         continue;
       }
 
-      const checkIn = this.parseTemplateTime(attendanceDate, checkInCell);
-      const checkOut = this.parseTemplateTime(attendanceDate, checkOutCell);
-      const needsCheckIn =
+      const tracksDuty =
         mapped.status === "present" && mapped.shift !== "Holiday";
+      const checkIn = tracksDuty
+        ? this.parseTemplateTime(attendanceDate, checkInCell)
+        : null;
+      const checkOut = tracksDuty
+        ? this.parseTemplateTime(attendanceDate, checkOutCell)
+        : null;
 
-      if (hasCheckIn && !checkIn) {
+      if (tracksDuty && hasCheckIn && !checkIn) {
         pushError("Invalid Check-In Time. Use hh:mm AM/PM (Excel time cells are also accepted)");
         continue;
       }
-      if (hasCheckOut && !checkOut) {
+      if (tracksDuty && hasCheckOut && !checkOut) {
         pushError("Invalid Check-Out Time. Use hh:mm AM/PM (Excel time cells are also accepted)");
         continue;
       }
-      if (needsCheckIn && !checkIn) {
+      if (tracksDuty && !checkIn) {
         pushError("Check-In Time is required for Present, Half Day, and WFH");
         continue;
       }
-      if (checkIn && checkOut && checkOut <= checkIn) {
+      if (tracksDuty && checkIn && checkOut && checkOut <= checkIn) {
         pushError("Check-Out Time must be after Check-In Time");
         continue;
       }
@@ -1447,16 +1512,17 @@ export class AttendanceService {
           period: mapped.period,
           leaveType: mapped.leaveType,
           shift: mapped.shift || (remarks ? remarks.slice(0, 255) : null),
-          checkIn:
-            checkIn ||
-            (mapped.status === "present" && mapped.shift !== "Holiday"
-              ? getFullDayTimes(attendanceDate).checkIn
-              : null),
-          checkOut:
-            checkOut ||
-            (mapped.status === "present" && mapped.period === "full_time" && mapped.shift !== "Holiday"
-              ? getFullDayTimes(attendanceDate).checkOut
-              : null),
+          // Absent / leave / holiday must not keep template duty times — those
+          // were forcing the attendance list to show Present with 8h.
+          checkIn: tracksDuty
+            ? checkIn || getFullDayTimes(attendanceDate).checkIn
+            : null,
+          checkOut: tracksDuty
+            ? checkOut ||
+              (mapped.period === "full_time"
+                ? getFullDayTimes(attendanceDate).checkOut
+                : null)
+            : null,
           lateEntry: false,
           earlyExit: false,
           markedBy: currentUser.id,
