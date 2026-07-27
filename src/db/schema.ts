@@ -375,6 +375,140 @@ export const performance = pgTable("performance", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// ==========================
+// Employee Performance (Appraisals + Energy Points)
+// ==========================
+
+export const appraisalTemplate = pgTable("appraisal_template", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id")
+    .notNull()
+    .references((): any => organizations.id),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const appraisalTemplateGoal = pgTable("appraisal_template_goal", {
+  id: serial("id").primaryKey(),
+  templateId: integer("template_id")
+    .notNull()
+    .references(() => appraisalTemplate.id, { onDelete: "cascade" }),
+  srNo: varchar("sr_no", { length: 20 }),
+  kra: varchar("kra", { length: 255 }).notNull(),
+  weightage: decimal("weightage", { precision: 10, scale: 2 }).default("0").notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const appraisal = pgTable("appraisal", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id")
+    .notNull()
+    .references((): any => organizations.id),
+  series: varchar("series", { length: 100 }).default("HR-APR").notNull(),
+  templateId: integer("template_id").references(() => appraisalTemplate.id),
+  empId: integer("emp_id")
+    .notNull()
+    .references(() => Employee.userId),
+  departmentId: integer("department_id").references(() => department.id),
+  status: varchar("status", { length: 50 }).default("Draft").notNull(),
+  startDate: varchar("start_date", { length: 50 }),
+  endDate: varchar("end_date", { length: 50 }),
+  remarks: text("remarks"),
+  totalScore: decimal("total_score", { precision: 10, scale: 3 }).default("0").notNull(),
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const appraisalGoal = pgTable("appraisal_goal", {
+  id: serial("id").primaryKey(),
+  appraisalId: integer("appraisal_id")
+    .notNull()
+    .references(() => appraisal.id, { onDelete: "cascade" }),
+  templateGoalId: integer("template_goal_id").references(() => appraisalTemplateGoal.id),
+  srNo: varchar("sr_no", { length: 20 }),
+  goal: varchar("goal", { length: 255 }).notNull(),
+  weightage: decimal("weightage", { precision: 10, scale: 2 }).default("0").notNull(),
+  score: decimal("score", { precision: 5, scale: 2 }).default("0").notNull(),
+  earned: decimal("earned", { precision: 10, scale: 3 }).default("0").notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const energyPointRule = pgTable("energy_point_rule", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id")
+    .notNull()
+    .references((): any => organizations.id),
+  ruleName: varchar("rule_name", { length: 255 }).notNull(),
+  enabled: boolean("enabled").default(true).notNull(),
+  referenceDocumentType: varchar("reference_document_type", { length: 255 }),
+  forDocumentEvent: varchar("for_document_event", { length: 50 }).default("Custom").notNull(),
+  points: integer("points").default(0).notNull(),
+  allotPointsToUser: boolean("allot_points_to_user").default(false).notNull(),
+  userField: varchar("user_field", { length: 100 }).default("Owner"),
+  multiplierField: varchar("multiplier_field", { length: 255 }),
+  applyOnlyOnce: boolean("apply_only_once").default(false).notNull(),
+  condition: text("condition"),
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const energyPointLog = pgTable("energy_point_log", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id")
+    .notNull()
+    .references((): any => organizations.id),
+  empId: integer("emp_id")
+    .notNull()
+    .references(() => Employee.userId),
+  ruleId: integer("rule_id").references(() => energyPointRule.id),
+  status: varchar("status", { length: 50 }).default("Auto").notNull(),
+  points: integer("points").default(0).notNull(),
+  referenceDocumentType: varchar("reference_document_type", { length: 255 }),
+  referenceDocumentId: varchar("reference_document_id", { length: 255 }),
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const energyPointSettings = pgTable("energy_point_settings", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id")
+    .notNull()
+    .unique()
+    .references((): any => organizations.id),
+  enabled: boolean("enabled").default(false).notNull(),
+  allocationPeriod: varchar("allocation_period", { length: 100 }).default("Weekly"),
+  lastAllocationDate: varchar("last_allocation_date", { length: 50 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const energyPointReviewLevel = pgTable("energy_point_review_level", {
+  id: serial("id").primaryKey(),
+  settingsId: integer("settings_id")
+    .notNull()
+    .references(() => energyPointSettings.id, { onDelete: "cascade" }),
+  levelName: varchar("level_name", { length: 100 }).notNull(),
+  role: varchar("role", { length: 255 }).notNull(),
+  reviewPoints: integer("review_points").default(0).notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Attendance Table
 export const attendance = pgTable(
   "attendance",
@@ -1242,6 +1376,106 @@ export const performanceRelations = relations(performance, ({ one }) => ({
     references: [Employee.userId],
   }),
 }));
+
+export const appraisalTemplateRelations = relations(
+  appraisalTemplate,
+  ({ many, one }) => ({
+    goals: many(appraisalTemplateGoal),
+    appraisals: many(appraisal),
+    organization: one(organizations, {
+      fields: [appraisalTemplate.organizationId],
+      references: [organizations.id],
+    }),
+  }),
+);
+
+export const appraisalTemplateGoalRelations = relations(
+  appraisalTemplateGoal,
+  ({ one }) => ({
+    template: one(appraisalTemplate, {
+      fields: [appraisalTemplateGoal.templateId],
+      references: [appraisalTemplate.id],
+    }),
+  }),
+);
+
+export const appraisalRelations = relations(appraisal, ({ one, many }) => ({
+  template: one(appraisalTemplate, {
+    fields: [appraisal.templateId],
+    references: [appraisalTemplate.id],
+  }),
+  employee: one(Employee, {
+    fields: [appraisal.empId],
+    references: [Employee.userId],
+  }),
+  department: one(department, {
+    fields: [appraisal.departmentId],
+    references: [department.id],
+  }),
+  goals: many(appraisalGoal),
+  organization: one(organizations, {
+    fields: [appraisal.organizationId],
+    references: [organizations.id],
+  }),
+}));
+
+export const appraisalGoalRelations = relations(appraisalGoal, ({ one }) => ({
+  appraisal: one(appraisal, {
+    fields: [appraisalGoal.appraisalId],
+    references: [appraisal.id],
+  }),
+  templateGoal: one(appraisalTemplateGoal, {
+    fields: [appraisalGoal.templateGoalId],
+    references: [appraisalTemplateGoal.id],
+  }),
+}));
+
+export const energyPointRuleRelations = relations(
+  energyPointRule,
+  ({ one, many }) => ({
+    organization: one(organizations, {
+      fields: [energyPointRule.organizationId],
+      references: [organizations.id],
+    }),
+    logs: many(energyPointLog),
+  }),
+);
+
+export const energyPointLogRelations = relations(energyPointLog, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [energyPointLog.organizationId],
+    references: [organizations.id],
+  }),
+  employee: one(Employee, {
+    fields: [energyPointLog.empId],
+    references: [Employee.userId],
+  }),
+  rule: one(energyPointRule, {
+    fields: [energyPointLog.ruleId],
+    references: [energyPointRule.id],
+  }),
+}));
+
+export const energyPointSettingsRelations = relations(
+  energyPointSettings,
+  ({ one, many }) => ({
+    organization: one(organizations, {
+      fields: [energyPointSettings.organizationId],
+      references: [organizations.id],
+    }),
+    reviewLevels: many(energyPointReviewLevel),
+  }),
+);
+
+export const energyPointReviewLevelRelations = relations(
+  energyPointReviewLevel,
+  ({ one }) => ({
+    settings: one(energyPointSettings, {
+      fields: [energyPointReviewLevel.settingsId],
+      references: [energyPointSettings.id],
+    }),
+  }),
+);
 
 export const attendanceRelations = relations(attendance, ({ one }) => ({
   user: one(Employee, {
