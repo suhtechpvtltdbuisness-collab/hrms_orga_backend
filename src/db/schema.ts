@@ -1744,3 +1744,127 @@ export const salesDocument = pgTable("sales_document", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+// ==========================
+// Invoice Tables (org-scoped, aligned with Sales clients)
+// ==========================
+
+export const salesInvoice = pgTable("sales_invoice", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id")
+    .notNull()
+    .references((): any => organizations.id),
+  invoiceNumber: varchar("invoice_number", { length: 100 }).notNull(),
+  customerName: varchar("customer_name", { length: 255 }).notNull(),
+  clientId: integer("client_id").references((): any => salesRecord.id),
+  invoiceDate: varchar("invoice_date", { length: 50 }).notNull(),
+  dueDate: varchar("due_date", { length: 50 }),
+  subTotal: decimal("sub_total", { precision: 14, scale: 2 }).default("0").notNull(),
+  totalTax: decimal("total_tax", { precision: 14, scale: 2 }).default("0").notNull(),
+  amount: decimal("amount", { precision: 14, scale: 2 }).default("0").notNull(),
+  status: varchar("status", { length: 50 }).default("Pending").notNull(), // Paid | Pending | Overdue
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const salesInvoiceItem = pgTable("sales_invoice_item", {
+  id: serial("id").primaryKey(),
+  invoiceId: integer("invoice_id")
+    .notNull()
+    .references((): any => salesInvoice.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 255 }).notNull(),
+  quantity: decimal("quantity", { precision: 14, scale: 2 }).default("0").notNull(),
+  rate: decimal("rate", { precision: 14, scale: 2 }).default("0").notNull(),
+  tax: decimal("tax", { precision: 8, scale: 2 }).default("0").notNull(),
+  amount: decimal("amount", { precision: 14, scale: 2 }).default("0").notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const purchaseInvoice = pgTable("purchase_invoice", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id")
+    .notNull()
+    .references((): any => organizations.id),
+  invoiceNumber: varchar("invoice_number", { length: 100 }).notNull(),
+  supplierName: varchar("supplier_name", { length: 255 }).notNull(),
+  billDate: varchar("bill_date", { length: 50 }).notNull(),
+  dueDate: varchar("due_date", { length: 50 }),
+  subTotal: decimal("sub_total", { precision: 14, scale: 2 }).default("0").notNull(),
+  totalTax: decimal("total_tax", { precision: 14, scale: 2 }).default("0").notNull(),
+  amount: decimal("amount", { precision: 14, scale: 2 }).default("0").notNull(),
+  status: varchar("status", { length: 50 }).default("Pending").notNull(), // Paid | Pending | Overdue
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const purchaseInvoiceItem = pgTable("purchase_invoice_item", {
+  id: serial("id").primaryKey(),
+  invoiceId: integer("invoice_id")
+    .notNull()
+    .references((): any => purchaseInvoice.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 255 }).notNull(),
+  amount: decimal("amount", { precision: 14, scale: 2 }).default("0").notNull(),
+  tax: decimal("tax", { precision: 8, scale: 2 }).default("0").notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const recurringInvoice = pgTable("recurring_invoice", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id")
+    .notNull()
+    .references((): any => organizations.id),
+  invoiceTitle: varchar("invoice_title", { length: 255 }).notNull(),
+  client: varchar("client", { length: 255 }).notNull(),
+  clientId: integer("client_id").references((): any => salesRecord.id),
+  invoiceType: varchar("invoice_type", { length: 50 }), // Monthly | Yearly | Quarterly
+  billDate: varchar("bill_date", { length: 50 }).notNull(),
+  revenueAccount: varchar("revenue_account", { length: 255 }),
+  taxRules: varchar("tax_rules", { length: 50 }),
+  subTotal: decimal("sub_total", { precision: 14, scale: 2 }).default("0").notNull(),
+  totalTax: decimal("total_tax", { precision: 14, scale: 2 }).default("0").notNull(),
+  amount: decimal("amount", { precision: 14, scale: 2 }).default("0").notNull(),
+  status: varchar("status", { length: 50 }).default("Active").notNull(), // Active | Inactive
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const recurringInvoiceItem = pgTable("recurring_invoice_item", {
+  id: serial("id").primaryKey(),
+  invoiceId: integer("invoice_id")
+    .notNull()
+    .references((): any => recurringInvoice.id, { onDelete: "cascade" }),
+  phase: varchar("phase", { length: 255 }).notNull(),
+  amount: decimal("amount", { precision: 14, scale: 2 }).default("0").notNull(),
+  scheduleDate: varchar("schedule_date", { length: 50 }),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const invoicePayment = pgTable("invoice_payment", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id")
+    .notNull()
+    .references((): any => organizations.id),
+  salesInvoiceId: integer("sales_invoice_id").references((): any => salesInvoice.id),
+  invoiceNumber: varchar("invoice_number", { length: 100 }),
+  customer: varchar("customer", { length: 255 }).notNull(),
+  paymentDate: varchar("payment_date", { length: 50 }).notNull(),
+  amount: decimal("amount", { precision: 14, scale: 2 }).default("0").notNull(),
+  method: varchar("method", { length: 100 }).notNull(), // Bank Transfer | Check | Cash
+  status: varchar("status", { length: 50 }).default("Pending").notNull(), // Complete | Pending | Active
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
