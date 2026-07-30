@@ -21,14 +21,15 @@ leaveManagementRouter.post("/encashment-requests/all", (req, res, next) =>
   controller.createEncashAllRequest(req, res, next),
 );
 
+// Holidays are readable by employees in the same organization.
+leaveManagementRouter.get("/holidays", (req, res, next) =>
+  controller.getHolidays(req, res, next),
+);
+
 leaveManagementRouter.use(authorizeAdmin);
 
 leaveManagementRouter.get("/options", (req, res, next) =>
   controller.getOptions(req, res, next),
-);
-
-leaveManagementRouter.get("/holidays", (req, res, next) =>
-  controller.getHolidays(req, res, next),
 );
 leaveManagementRouter.post("/holidays", (req, res, next) =>
   controller.createHoliday(req, res, next),

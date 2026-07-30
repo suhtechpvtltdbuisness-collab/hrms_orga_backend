@@ -147,6 +147,31 @@ class LeaveManagementRepository {
       .orderBy(leaveHoliday.holidayDate, leaveHoliday.name);
   }
 
+  async getHolidaysByOrganization(
+    organizationId: number,
+    filters: { search?: string; type?: string; year?: number },
+  ) {
+    const conditions = [eq(leaveHoliday.organizationId, organizationId)];
+
+    if (filters.type) {
+      conditions.push(eq(leaveHoliday.holidayType, filters.type));
+    }
+
+    if (filters.year) {
+      conditions.push(eq(leaveHoliday.holidayYear, filters.year));
+    }
+
+    if (filters.search) {
+      conditions.push(ilike(leaveHoliday.name, `%${filters.search}%`));
+    }
+
+    return db
+      .select()
+      .from(leaveHoliday)
+      .where(and(...conditions))
+      .orderBy(leaveHoliday.holidayDate, leaveHoliday.name);
+  }
+
   async createHoliday(data: typeof leaveHoliday.$inferInsert) {
     const [result] = await db.insert(leaveHoliday).values(data).returning();
     return result;

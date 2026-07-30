@@ -195,9 +195,13 @@ class LeaveManagementServices {
     filters: { search?: string; type?: string; year?: number },
     currentUser: CurrentUser,
   ) {
-    this.assertAdmin(currentUser);
-    const adminId = this.getAdminScopeId(currentUser);
-    const holidays = await this.repo.getHolidays(adminId, filters);
+    const isAdmin = currentUser.roleId === 0 || currentUser.roleId === 1;
+    const holidays = isAdmin
+      ? await this.repo.getHolidays(this.getAdminScopeId(currentUser), filters)
+      : await this.repo.getHolidaysByOrganization(
+          this.getOrgId(currentUser),
+          filters,
+        );
 
     const years = Array.from(new Set(holidays.map((item) => item.holidayYear))).sort(
       (a, b) => b - a,
