@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike } from "drizzle-orm";
+import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 import {
   invoicePayment,
   purchaseInvoice,
@@ -41,6 +41,21 @@ class InvoiceRepository {
       .where(
         and(
           eq(salesInvoice.id, id),
+          eq(salesInvoice.organizationId, organizationId),
+          eq(salesInvoice.isDeleted, false),
+        ),
+      )
+      .limit(1);
+    return (result as any)[0];
+  }
+
+  async getSalesInvoiceByNumber(invoiceNumber: string, organizationId: number) {
+    const result = await this.db
+      .select()
+      .from(salesInvoice)
+      .where(
+        and(
+          eq(salesInvoice.invoiceNumber, invoiceNumber),
           eq(salesInvoice.organizationId, organizationId),
           eq(salesInvoice.isDeleted, false),
         ),
@@ -108,6 +123,44 @@ class InvoiceRepository {
       .where(eq(salesInvoice.id, id))
       .returning();
     return (result as any)[0];
+  }
+
+  async getInvoicePaymentSummary(
+    organizationId: number,
+    salesInvoiceId?: number | null,
+    invoiceNumber?: string | null,
+  ) {
+    if (!salesInvoiceId && !invoiceNumber) {
+      return { totalAmount: 0, completedAmount: 0 };
+    }
+
+    const conditions = [
+      eq(invoicePayment.organizationId, organizationId),
+      eq(invoicePayment.isDeleted, false),
+    ];
+
+    if (salesInvoiceId && invoiceNumber) {
+      conditions.push(
+        or(
+          eq(invoicePayment.salesInvoiceId, salesInvoiceId),
+          eq(invoicePayment.invoiceNumber, invoiceNumber),
+        ) as any,
+      );
+    } else if (salesInvoiceId) {
+      conditions.push(eq(invoicePayment.salesInvoiceId, salesInvoiceId));
+    } else if (invoiceNumber) {
+      conditions.push(eq(invoicePayment.invoiceNumber, invoiceNumber));
+    }
+
+    const result = await this.db
+      .select({
+        totalAmount: sql<number>`coalesce(sum(${invoicePayment.amount}::numeric), 0)::float`,
+        completedAmount: sql<number>`coalesce(sum(case when ${invoicePayment.status} = 'Complete' then ${invoicePayment.amount}::numeric else 0 end), 0)::float`,
+      })
+      .from(invoicePayment)
+      .where(and(...conditions));
+
+    return result[0] || { totalAmount: 0, completedAmount: 0 };
   }
 
   async softDeleteSalesInvoice(id: number) {

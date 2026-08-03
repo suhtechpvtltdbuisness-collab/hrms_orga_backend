@@ -37,6 +37,39 @@ class InvoiceServices {
     return orgId;
   }
 
+  private normalizeDateOnly(value?: string | null) {
+    if (!value) return null;
+    const raw = String(value).slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
+    const [y, m, d] = raw.split("-").map(Number);
+    const date = new Date(y, m - 1, d);
+    date.setHours(0, 0, 0, 0);
+    return date;
+  }
+
+  private async resolveSalesInvoiceStatus(invoice: any, organizationId: number) {
+    const paymentSummary = await this.repo.getInvoicePaymentSummary(
+      organizationId,
+      invoice.id,
+      invoice.invoiceNumber,
+    );
+    const completedAmount = Number(paymentSummary.completedAmount || 0);
+    const invoiceAmount = Number(invoice.amount || 0);
+
+    if (invoiceAmount > 0 && completedAmount >= invoiceAmount) {
+      return "Paid";
+    }
+
+    const dueDate = this.normalizeDateOnly(invoice.dueDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (dueDate && dueDate < today) {
+      return "Overdue";
+    }
+
+    return "Pending";
+  }
+
   private mapSalesInvoice(invoice: any, items: any[] = []) {
     return {
       id: invoice.id,
@@ -188,17 +221,28 @@ class InvoiceServices {
     const rows = await this.repo.listSalesInvoices(orgId, filters);
     const data = await Promise.all(
       rows.map(async (row) => {
+        const derivedStatus = await this.resolveSalesInvoiceStatus(row, orgId);
+        if (row.status !== derivedStatus) {
+          row = await this.repo.updateSalesInvoice(row.id, { status: derivedStatus });
+        }
         const items = await this.repo.getSalesInvoiceItems(row.id);
         return this.mapSalesInvoice(row, items);
       }),
     );
-    return { success: true, data };
+    const filteredData = filters.status
+      ? data.filter((item) => item.status === filters.status)
+      : data;
+    return { success: true, data: filteredData };
   }
 
   async getSalesInvoice(id: number, currentUser: CurrentUser) {
     const orgId = this.getOrgId(currentUser);
-    const invoice = await this.repo.getSalesInvoiceById(id, orgId);
+    let invoice = await this.repo.getSalesInvoiceById(id, orgId);
     if (!invoice) throw new Error("Sales invoice not found");
+    const derivedStatus = await this.resolveSalesInvoiceStatus(invoice, orgId);
+    if (invoice.status !== derivedStatus) {
+      invoice = await this.repo.updateSalesInvoice(id, { status: derivedStatus });
+    }
     const items = await this.repo.getSalesInvoiceItems(id);
     return { success: true, data: this.mapSalesInvoice(invoice, items) };
   }
@@ -669,7 +713,7 @@ class InvoiceServices {
       throw new Error(`Status must be one of: ${PAYMENT_STATUSES.join(", ")}`);
     }
 
-    let invoiceNumber = body.invoiceNumber ? String(body.invoiceNumber) : null;
+    let invoiceNumber = body.invoiceNumber ? String(body.invoiceNumber).trim() : null;
     let customer = body.customer ? String(body.customer).trim() : "";
     let salesInvoiceId = body.salesInvoiceId
       ? Number(body.salesInvoiceId)
@@ -683,6 +727,14 @@ class InvoiceServices {
       if (!invoice) throw new Error("Linked sales invoice not found");
       invoiceNumber = invoice.invoiceNumber;
       customer = invoice.customerName;
+    }
+    if (!salesInvoiceId && invoiceNumber) {
+      const invoice = await this.repo.getSalesInvoiceByNumber(invoiceNumber, orgId);
+      if (invoice) {
+        salesInvoiceId = invoice.id;
+        customer = customer || invoice.customerName;
+        invoiceNumber = invoice.invoiceNumber;
+      }
     }
 
     if (!customer) throw new Error("Customer is required");
@@ -698,6 +750,16 @@ class InvoiceServices {
       status: body.status || "Pending",
       createdBy: currentUser.id,
     });
+
+    if (salesInvoiceId) {
+      const invoice = await this.repo.getSalesInvoiceById(salesInvoiceId, orgId);
+      if (invoice) {
+        const status = await this.resolveSalesInvoiceStatus(invoice, orgId);
+        if (invoice.status !== status) {
+          await this.repo.updateSalesInvoice(invoice.id, { status });
+        }
+      }
+    }
 
     return {
       success: true,
@@ -728,7 +790,7 @@ class InvoiceServices {
     let invoiceNumber =
       body.invoiceNumber !== undefined
         ? body.invoiceNumber
-          ? String(body.invoiceNumber)
+          ? String(body.invoiceNumber).trim()
           : null
         : existing.invoiceNumber;
     let customer =
@@ -746,6 +808,14 @@ class InvoiceServices {
       invoiceNumber = invoice.invoiceNumber;
       customer = invoice.customerName;
     }
+    if (!salesInvoiceId && invoiceNumber) {
+      const invoice = await this.repo.getSalesInvoiceByNumber(invoiceNumber, orgId);
+      if (invoice) {
+        salesInvoiceId = invoice.id;
+        customer = customer || invoice.customerName;
+        invoiceNumber = invoice.invoiceNumber;
+      }
+    }
 
     const payment = await this.repo.updateInvoicePayment(id, {
       salesInvoiceId,
@@ -761,6 +831,16 @@ class InvoiceServices {
       status: body.status !== undefined ? body.status : existing.status,
     });
 
+    if (salesInvoiceId) {
+      const invoice = await this.repo.getSalesInvoiceById(salesInvoiceId, orgId);
+      if (invoice) {
+        const status = await this.resolveSalesInvoiceStatus(invoice, orgId);
+        if (invoice.status !== status) {
+          await this.repo.updateSalesInvoice(invoice.id, { status });
+        }
+      }
+    }
+
     return {
       success: true,
       message: "Payment updated successfully",
@@ -773,6 +853,15 @@ class InvoiceServices {
     const existing = await this.repo.getInvoicePaymentById(id, orgId);
     if (!existing) throw new Error("Payment not found");
     await this.repo.softDeleteInvoicePayment(id);
+    if (existing.salesInvoiceId) {
+      const invoice = await this.repo.getSalesInvoiceById(existing.salesInvoiceId, orgId);
+      if (invoice) {
+        const status = await this.resolveSalesInvoiceStatus(invoice, orgId);
+        if (invoice.status !== status) {
+          await this.repo.updateSalesInvoice(invoice.id, { status });
+        }
+      }
+    }
     return { success: true, message: "Payment deleted successfully" };
   }
 }
