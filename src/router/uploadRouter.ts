@@ -2,7 +2,11 @@ import { Router, Request, Response, NextFunction } from "express";
 import multer from "multer";
 import fs from "fs";
 import path from "path";
-import { uploadImageToS3OrLocal, getUploadsDirectory } from "../services/uploadService.js";
+import {
+  uploadFileToLocal,
+  uploadImageToS3OrLocal,
+  getUploadsDirectory,
+} from "../services/uploadService.js";
 import { authenticate } from "../middleware/auth.js";
 import { get } from "@vercel/blob";
 
@@ -84,6 +88,52 @@ uploadRouter.post(
       next(error);
     }
   }
+);
+
+uploadRouter.post(
+  "/announcements",
+  authenticate,
+  upload.array("attachments", 10),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const files = req.files as Express.Multer.File[];
+      if (!files?.length) {
+        res.status(400).json({ success: false, message: "No files uploaded" });
+        return;
+      }
+
+      if (files.some((file) => file.mimetype !== "application/pdf")) {
+        res.status(400).json({
+          success: false,
+          message: "Announcements only support PDF attachments",
+        });
+        return;
+      }
+
+      const host = req.get("host") || "localhost:4000";
+      const uploadedFiles = await Promise.all(
+        files.map(async (file, index) => ({
+          id: `att-${Date.now()}-${index}`,
+          name: file.originalname,
+          type: "PDF",
+          size:
+            file.size > 1048576
+              ? `${(file.size / 1048576).toFixed(1)} MB`
+              : `${Math.ceil(file.size / 1024)} KB`,
+          url: await uploadFileToLocal(file, host, "announcements"),
+        })),
+      );
+
+      res.status(200).json({
+        success: true,
+        message: "Announcement attachments uploaded successfully",
+        files: uploadedFiles,
+      });
+    } catch (error) {
+      console.error("Announcement attachment upload error:", error);
+      next(error);
+    }
+  },
 );
 
 uploadRouter.post(

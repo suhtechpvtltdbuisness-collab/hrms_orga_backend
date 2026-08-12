@@ -59,23 +59,40 @@ export async function deleteLocalUpload(publicPath: string): Promise<void> {
   });
 }
 
+function resolvePublicUploadUrl(reqHost: string, relativePath: string): string {
+  const protocol =
+    reqHost.includes("localhost") || reqHost.includes("127.0.0.1")
+      ? "http"
+      : "https";
+  return `${protocol}://${reqHost}${relativePath}`;
+}
+
+export async function uploadFileToLocal(
+  file: Express.Multer.File,
+  reqHost: string,
+  subdirectory?: string,
+): Promise<string> {
+  if (subdirectory && !/^[a-z0-9-]+$/i.test(subdirectory)) {
+    throw new Error("Invalid upload subdirectory");
+  }
+
+  const extension = path.extname(file.originalname) || ".bin";
+  const uniqueName = `${crypto.randomUUID()}${extension}`;
+  const uploadDir = await ensureUploadDirectory(subdirectory);
+  const filePath = path.join(uploadDir, uniqueName);
+  await fs.promises.writeFile(filePath, file.buffer, { flag: "wx" });
+
+  const relativePath = subdirectory
+    ? path.posix.join(PUBLIC_UPLOADS_PATH, subdirectory, uniqueName)
+    : path.posix.join(PUBLIC_UPLOADS_PATH, uniqueName);
+
+  return resolvePublicUploadUrl(reqHost, relativePath);
+}
+
 
 export async function uploadImageToS3OrLocal(
   file: Express.Multer.File,
   reqHost: string
 ): Promise<string> {
-  const extension = path.extname(file.originalname) || ".jpg";
-  const uniqueName = `${crypto.randomUUID()}${extension}`;
-
-  const uploadDir = await ensureUploadDirectory();
-
-  const filePath = path.join(uploadDir, uniqueName);
-  await fs.promises.writeFile(filePath, file.buffer, { flag: "wx" });
-
-  const protocol =
-    reqHost.includes("localhost") || reqHost.includes("127.0.0.1")
-      ? "http"
-      : "https";
-
-  return `${protocol}://${reqHost}/uploads/${uniqueName}`;
+  return uploadFileToLocal(file, reqHost);
 }
