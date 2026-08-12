@@ -148,6 +148,9 @@ export class AccountsRepository {
         accountName: chartAccount.accountName,
         debit: journalEntryLine.debit,
         credit: journalEntryLine.credit,
+        departmentId: journalEntryLine.departmentId,
+        costCenter: journalEntryLine.costCenter,
+        description: journalEntryLine.description,
       })
       .from(journalEntryLine)
       .innerJoin(chartAccount, eq(chartAccount.id, journalEntryLine.accountId))
@@ -174,6 +177,9 @@ export class AccountsRepository {
         accountName: chartAccount.accountName,
         debit: journalEntryLine.debit,
         credit: journalEntryLine.credit,
+        departmentId: journalEntryLine.departmentId,
+        costCenter: journalEntryLine.costCenter,
+        description: journalEntryLine.description,
       })
       .from(journalEntryLine)
       .innerJoin(chartAccount, eq(chartAccount.id, journalEntryLine.accountId))

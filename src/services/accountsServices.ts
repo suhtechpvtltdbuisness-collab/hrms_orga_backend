@@ -1,10 +1,33 @@
 import { users } from "../db/schema.js";
 import { AccountsRepository } from "../repository/accounts.repo.js";
+import {
+  CASH_FLOW_ACTIVITIES,
+  STATEMENT_SECTIONS,
+} from "../utils/financial.js";
 
 function toNumberAmount(value: unknown) {
   const parsed = Number(value ?? 0);
   if (!Number.isFinite(parsed) || parsed < 0) throw new Error("Amount must be a valid non-negative number");
   return parsed.toFixed(2);
+}
+
+/** Optional statement mapping consumed by the financial reports module. */
+function toStatementSection(value: unknown) {
+  if (value === undefined || value === null || value === "") return null;
+  const section = String(value).trim().toLowerCase();
+  if (!(STATEMENT_SECTIONS as readonly string[]).includes(section)) {
+    throw new Error(`statementSection must be one of: ${STATEMENT_SECTIONS.join(", ")}`);
+  }
+  return section;
+}
+
+function toCashFlowActivity(value: unknown) {
+  if (value === undefined || value === null || value === "") return null;
+  const activity = String(value).trim().toLowerCase();
+  if (!(CASH_FLOW_ACTIVITIES as readonly string[]).includes(activity)) {
+    throw new Error(`cashFlowActivity must be one of: ${CASH_FLOW_ACTIVITIES.join(", ")}`);
+  }
+  return activity;
 }
 
 function getAdminScopeId(currentUser: typeof users.$inferSelect) {
@@ -33,6 +56,9 @@ export class AccountsServices {
       parentAccount: body.parentAccount?.trim() || null,
       currency: body.currency?.trim() || null,
       openingBalance: toNumberAmount(body.openingBalance),
+      statementSection: toStatementSection(body.statementSection),
+      cashFlowActivity: toCashFlowActivity(body.cashFlowActivity),
+      reportCategory: body.reportCategory?.trim() || null,
       createdBy: currentUser.id,
     });
     return { success: true, message: "Account created successfully", data };
@@ -46,6 +72,9 @@ export class AccountsServices {
       parentAccount: body.parentAccount?.trim() || null,
       currency: body.currency?.trim() || null,
       openingBalance: toNumberAmount(body.openingBalance),
+      statementSection: toStatementSection(body.statementSection),
+      cashFlowActivity: toCashFlowActivity(body.cashFlowActivity),
+      reportCategory: body.reportCategory?.trim() || null,
     });
     if (!data) throw new Error("Account not found");
     return { success: true, message: "Account updated successfully", data };
@@ -138,6 +167,9 @@ export class AccountsServices {
         account: line.accountName,
         debit: line.debit,
         credit: line.credit,
+        departmentId: line.departmentId,
+        costCenter: line.costCenter,
+        description: line.description,
       })),
     }));
     return { success: true, data };
@@ -157,6 +189,9 @@ export class AccountsServices {
           account: line.accountName,
           debit: line.debit,
           credit: line.credit,
+          departmentId: line.departmentId,
+          costCenter: line.costCenter,
+          description: line.description,
         })),
       },
     };
@@ -171,6 +206,9 @@ export class AccountsServices {
         accountId: Number(entry.accountId),
         debit: toNumberAmount(entry.debit),
         credit: toNumberAmount(entry.credit),
+        departmentId: entry.departmentId ? Number(entry.departmentId) : null,
+        costCenter: entry.costCenter?.trim() || null,
+        description: entry.description?.trim() || null,
       };
     });
     const totalDebit = entries.reduce((sum: number, entry: { debit: string }) => sum + Number(entry.debit), 0);

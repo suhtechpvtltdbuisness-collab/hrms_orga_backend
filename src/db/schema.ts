@@ -1127,6 +1127,12 @@ export const chartAccount = pgTable("chart_account", {
   parentAccount: varchar("parent_account", { length: 255 }),
   currency: varchar("currency", { length: 20 }),
   openingBalance: decimal("opening_balance", { precision: 15, scale: 2 }).default("0").notNull(),
+  // Financial statement placement. When null, it is derived from accountType so
+  // accounts created before the reporting module still appear on statements.
+  statementSection: varchar("statement_section", { length: 40 }),
+  cashFlowActivity: varchar("cash_flow_activity", { length: 20 }),
+  // Grouping label used by the revenue/expense breakdown tables.
+  reportCategory: varchar("report_category", { length: 120 }),
   isActive: boolean("is_active").default(true).notNull(),
   isDeleted: boolean("is_deleted").default(false).notNull(),
   createdBy: integer("created_by").references(() => users.id),
@@ -1176,6 +1182,10 @@ export const journalEntryLine = pgTable("journal_entry_line", {
     .references(() => chartAccount.id),
   debit: decimal("debit", { precision: 15, scale: 2 }).default("0").notNull(),
   credit: decimal("credit", { precision: 15, scale: 2 }).default("0").notNull(),
+  // Reporting dimensions. Lines left untagged roll up as "Unallocated".
+  departmentId: integer("department_id").references((): any => department.id),
+  costCenter: varchar("cost_center", { length: 120 }),
+  description: text("description"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -1851,6 +1861,53 @@ export const recurringInvoiceItem = pgTable("recurring_invoice_item", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const fiscalYear = pgTable("fiscal_year", {
+  id: serial("id").primaryKey(),
+  adminId: integer("admin_id")
+    .notNull()
+    .references(() => users.id),
+  name: varchar("name", { length: 120 }).notNull(),
+  startDate: varchar("start_date", { length: 50 }).notNull(),
+  endDate: varchar("end_date", { length: 50 }).notNull(),
+  isDefault: boolean("is_default").default(false).notNull(),
+  isClosed: boolean("is_closed").default(false).notNull(),
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const budget = pgTable("budget", {
+  id: serial("id").primaryKey(),
+  adminId: integer("admin_id")
+    .notNull()
+    .references(() => users.id),
+  name: varchar("name", { length: 255 }).notNull(),
+  fiscalYearId: integer("fiscal_year_id").references((): any => fiscalYear.id),
+  periodStart: varchar("period_start", { length: 50 }).notNull(),
+  periodEnd: varchar("period_end", { length: 50 }).notNull(),
+  status: varchar("status", { length: 30 }).default("Draft").notNull(), // Draft | Approved | Closed
+  notes: text("notes"),
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const budgetLine = pgTable("budget_line", {
+  id: serial("id").primaryKey(),
+  budgetId: integer("budget_id")
+    .notNull()
+    .references((): any => budget.id, { onDelete: "cascade" }),
+  departmentId: integer("department_id").references((): any => department.id),
+  accountId: integer("account_id").references(() => chartAccount.id),
+  categoryName: varchar("category_name", { length: 255 }).notNull(),
+  budgetedAmount: decimal("budgeted_amount", { precision: 15, scale: 2 }).default("0").notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const invoicePayment = pgTable("invoice_payment", {
   id: serial("id").primaryKey(),
   organizationId: integer("organization_id")
@@ -1863,6 +1920,49 @@ export const invoicePayment = pgTable("invoice_payment", {
   amount: decimal("amount", { precision: 14, scale: 2 }).default("0").notNull(),
   method: varchar("method", { length: 100 }).notNull(), // Bank Transfer | Check | Cash
   status: varchar("status", { length: 50 }).default("Pending").notNull(), // Complete | Pending | Active
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// ==========================
+// Expense module (org-scoped, feeds Financial Reports)
+// ==========================
+
+export const expenseCategory = pgTable("expense_category", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id")
+    .notNull()
+    .references((): any => organizations.id),
+  name: varchar("name", { length: 255 }).notNull(),
+  linkedAccount: varchar("linked_account", { length: 255 }),
+  monthlyBudget: decimal("monthly_budget", { precision: 14, scale: 2 }),
+  dailyLimit: decimal("daily_limit", { precision: 14, scale: 2 }),
+  approval: varchar("approval", { length: 50 }).default("Not Required").notNull(),
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const expense = pgTable("expense", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id")
+    .notNull()
+    .references((): any => organizations.id),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  category: varchar("category", { length: 255 }).notNull(),
+  categoryId: integer("category_id").references((): any => expenseCategory.id),
+  amount: decimal("amount", { precision: 14, scale: 2 }).default("0").notNull(),
+  expenseDate: varchar("expense_date", { length: 50 }).notNull(),
+  paymentType: varchar("payment_type", { length: 100 }),
+  bill: text("bill"),
+  status: varchar("status", { length: 50 }).default("Submitted").notNull(),
+  employeeName: varchar("employee_name", { length: 255 }),
+  costCenter: varchar("cost_center", { length: 120 }),
+  departmentId: integer("department_id").references((): any => department.id),
   isDeleted: boolean("is_deleted").default(false).notNull(),
   createdBy: integer("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
