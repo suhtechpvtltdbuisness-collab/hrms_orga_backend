@@ -34,6 +34,7 @@ import invoiceRouter from "./router/invoiceRouter.js";
 import contactRouter from "./router/contactRouter.js";
 import financialReportsRouter from "./router/financialReportsRouter.js";
 import expenseRouter from "./router/expenseRouter.js";
+import announcementRouter from "./router/announcementRouter.js";
 
 const router = Router();
 
@@ -77,6 +78,7 @@ router.use("/accounts", accountsRouter);
 router.use("/sales", salesRouter);
 router.use("/invoices", invoiceRouter);
 router.use("/expenses", expenseRouter);
+router.use("/announcements", announcementRouter);
 router.use("/contact", contactRouter);
 router.use("/financial-reports", financialReportsRouter);
 

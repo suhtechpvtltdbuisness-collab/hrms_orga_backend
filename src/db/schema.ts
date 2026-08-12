@@ -1968,3 +1968,62 @@ export const expense = pgTable("expense", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+// ==========================
+// Announcements (HRMS communications)
+// ==========================
+
+export type AnnouncementAttachment = {
+  id: string;
+  name: string;
+  size: string;
+  type: string;
+  url?: string;
+};
+
+export const announcement = pgTable("announcement", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id")
+    .notNull()
+    .references((): any => organizations.id),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description").notNull(),
+  content: text("content").notNull(),
+  type: varchar("type", { length: 100 }).default("Company Update").notNull(),
+  priority: varchar("priority", { length: 50 }).default("Normal").notNull(),
+  audience: varchar("audience", { length: 100 }).default("All Employees").notNull(),
+  departments: jsonb("departments").$type<string[]>().default([]).notNull(),
+  employees: jsonb("employees").$type<string[]>().default([]).notNull(),
+  author: varchar("author", { length: 255 }).notNull(),
+  status: varchar("status", { length: 50 }).default("Draft").notNull(),
+  publishedAt: timestamp("published_at"),
+  scheduledAt: timestamp("scheduled_at"),
+  expiryDate: varchar("expiry_date", { length: 50 }),
+  attachments: jsonb("attachments")
+    .$type<AnnouncementAttachment[]>()
+    .default([])
+    .notNull(),
+  recipients: integer("recipients").default(0).notNull(),
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const announcementRead = pgTable(
+  "announcement_read",
+  {
+    id: serial("id").primaryKey(),
+    announcementId: integer("announcement_id")
+      .notNull()
+      .references((): any => announcement.id, { onDelete: "cascade" }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    organizationId: integer("organization_id")
+      .notNull()
+      .references((): any => organizations.id),
+    readAt: timestamp("read_at").defaultNow().notNull(),
+  },
+  (table) => [unique().on(table.announcementId, table.userId)],
+);
