@@ -81,6 +81,13 @@ interface ClassifiedRow {
   amount: number;
 }
 
+interface CashFlowRow {
+  particulars: string;
+  inflow: number | null;
+  outflow: number | null;
+  net: number;
+}
+
 /** Sums values into a keyed bucket map, preserving first-seen order. */
 function accumulate<T>(
   rows: T[],
@@ -592,7 +599,7 @@ export class FinancialReportsServices {
       periodPurchases.reduce((sum, row) => sum + toAmount(row.amount), 0),
     );
 
-    const operatingRows = [
+    const operatingRows: CashFlowRow[] = [
       {
         particulars: "Receipts from Customers (Invoice Payments)",
         inflow: customerReceipts || null,
