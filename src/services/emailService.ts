@@ -1008,7 +1008,7 @@ export const emailService = {
     teamSize: string;
     useCase: string;
   }): Promise<boolean> => {
-    const recipient = (process.env.DEMO_REQUEST_EMAIL || "info@suhtech.top").trim();
+    const recipient = (process.env.DEMO_REQUEST_EMAIL || "").trim();
     const submittedAt = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
     const safe = {
       name: escapeHtml(payload.name),
