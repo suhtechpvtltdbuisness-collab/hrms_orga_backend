@@ -13,6 +13,7 @@ import {
   createManagedPlan,
   updateManagedPlan,
   deleteManagedPlan,
+  updateSubscriptionStatus,
 } from "../controllers/subscriptionController.js";
 import { authenticate, authorizeSuperAdmin } from "../middleware/auth.js";
 
@@ -26,6 +27,7 @@ subscriptionRouter.delete("/plans/manage/:id", authenticate, authorizeSuperAdmin
 
 subscriptionRouter.get("/current", authenticate, getCurrentSubscription);
 subscriptionRouter.get("/all", authenticate, authorizeSuperAdmin, getAllSubscriptions);
+subscriptionRouter.patch("/:id/status", authenticate, authorizeSuperAdmin, updateSubscriptionStatus);
 subscriptionRouter.post("/free-trial", authenticate, createTrialSubscription);
 subscriptionRouter.post("/verify-trial", authenticate, verifyTrialSubscription);
 subscriptionRouter.post("/create-order", authenticate, createPaymentOrder);

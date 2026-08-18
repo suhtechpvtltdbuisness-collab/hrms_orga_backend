@@ -3,6 +3,16 @@ import { Plain, PlainPayment, Employee, subscriptionPlanDefinition, users } from
 import { and, asc, eq, sql, ne } from "drizzle-orm";
 
 export class SubscriptionRepository {
+  async getAnyPlanByUserId(userId: number) {
+    const [plan] = await db
+      .select()
+      .from(Plain)
+      .where(eq(Plain.userId, userId))
+      .limit(1);
+
+    return plan ?? null;
+  }
+
   async getPlanDefinitions(includeInactive = false) {
     const conditions = [eq(subscriptionPlanDefinition.isDeleted, false)];
     if (!includeInactive) conditions.push(eq(subscriptionPlanDefinition.active, true));
@@ -133,6 +143,16 @@ export class SubscriptionRepository {
           eq(Plain.isDeleted, false),
         ),
       )
+      .limit(1);
+
+    return plan ?? null;
+  }
+
+  async getPlanById(planId: number) {
+    const [plan] = await db
+      .select()
+      .from(Plain)
+      .where(and(eq(Plain.id, planId), eq(Plain.isDeleted, false)))
       .limit(1);
 
     return plan ?? null;

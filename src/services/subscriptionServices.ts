@@ -521,10 +521,13 @@ export class SubscriptionService {
   }
 
   async createTrialSubscription(userId: number, userEmail: string) {
-    const existing = await this.repo.getActivePlanByUserId(userId);
+    const existing = await this.repo.getAnyPlanByUserId(userId);
 
     if (existing && this.isPlanActive(existing)) {
       throw new Error("You already have an active subscription");
+    }
+    if (existing) {
+      throw new Error("Free trial can only be activated once per account");
     }
 
     const trialConfig = await this.getRuntimePlanConfig("free_trial");
@@ -652,6 +655,9 @@ export class SubscriptionService {
     }
 
     if (
+      event.event === "subscription.pending" ||
+      event.event === "subscription.paused" ||
+      event.event === "subscription.completed" ||
       event.event === "subscription.cancelled" ||
       event.event === "subscription.halted"
     ) {
@@ -987,6 +993,35 @@ export class SubscriptionService {
       currentPage: page,
       limit,
     };
+  }
+
+  async updateSubscriptionStatus(planId: number, status: "Active" | "Canceled") {
+    const plan = await this.repo.getPlanById(planId);
+    if (!plan) {
+      throw new Error("Subscription not found");
+    }
+
+    if (status === "Canceled") {
+      if (plan.razorpaySubscriptionId) {
+        try {
+          const razorpay = getRazorpayInstance() as any;
+          await razorpay.subscriptions.cancel(plan.razorpaySubscriptionId);
+        } catch (error) {
+          console.error("Failed to cancel Razorpay subscription:", error);
+        }
+      }
+
+      const updated = await this.repo.updatePlan(plan.id, {
+        active: false,
+        expired: new Date().toISOString(),
+      });
+      return updated;
+    }
+
+    const updated = await this.repo.updatePlan(plan.id, {
+      active: true,
+    });
+    return updated;
   }
 }
 

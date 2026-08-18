@@ -394,3 +394,36 @@ export const getAllSubscriptions = async (
     });
   }
 };
+
+export const updateSubscriptionStatus = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    const id = Number(req.params.id);
+    const status = req.body?.status as "Active" | "Canceled" | undefined;
+
+    if (!Number.isInteger(id) || id <= 0) {
+      res.status(400).json({ success: false, message: "Invalid subscription ID" });
+      return;
+    }
+
+    if (!status || !["Active", "Canceled"].includes(status)) {
+      res.status(400).json({ success: false, message: "Invalid subscription status" });
+      return;
+    }
+
+    const plan = await subscriptionService.updateSubscriptionStatus(id, status);
+    res.status(200).json({
+      success: true,
+      message: status === "Canceled" ? "Subscription cancelled successfully" : "Subscription reactivated successfully",
+      data: plan,
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message:
+        error instanceof Error ? error.message : "Failed to update subscription status",
+    });
+  }
+};
