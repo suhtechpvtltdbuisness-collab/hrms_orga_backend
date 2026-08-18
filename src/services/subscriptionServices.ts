@@ -1,6 +1,6 @@
 import {
-  SUBSCRIPTION_PLANS,
   SUBSCRIPTION_ADDONS,
+  SUBSCRIPTION_PLAN_FEATURES,
   getAddonConfig,
   getPlanConfig,
   SubscriptionAddonType,
@@ -27,6 +27,8 @@ type ManagedPlanInput = {
   pricePerEmployeeInr?: unknown;
   durationDays?: unknown;
   maxEmployees?: unknown;
+  priceUsd?: unknown;
+  pricePerEmployeeUsd?: unknown;
   module?: unknown;
   organizationType?: unknown;
   features?: unknown;
@@ -59,6 +61,8 @@ export class SubscriptionService {
         description: managed.description,
         priceInr: managed.priceInr,
         pricePerEmployeeInr: managed.pricePerEmployeeInr,
+        priceUsd: managed.priceUsd ?? 0,
+        pricePerEmployeeUsd: managed.pricePerEmployeeUsd ?? 0,
         durationDays: managed.durationDays,
         maxEmployees: managed.maxEmployees,
         module: "hrms",
@@ -67,7 +71,9 @@ export class SubscriptionService {
       };
     }
     const fallback = getPlanConfig(planType);
-    return fallback ? { ...fallback, features: [] } : null;
+    return fallback
+      ? { ...fallback, features: SUBSCRIPTION_PLAN_FEATURES[planType] ?? [] }
+      : null;
   }
 
   private async getBasePlanMaxEmployees(plan: typeof Plain.$inferSelect | null) {
@@ -94,6 +100,8 @@ export class SubscriptionService {
       extraEmployeesPurchased,
       extraEmployeePriceInr:
         config?.pricePerEmployeeInr ?? SUBSCRIPTION_ADDONS.extra_employee.priceInr,
+      extraEmployeePriceUsd:
+        config?.pricePerEmployeeUsd ?? SUBSCRIPTION_ADDONS.extra_employee.priceUsd,
       features: config?.features ?? [],
       maxEmployees,
       seatsRemaining: Math.max(maxEmployees - employeeCount, 0),
@@ -106,12 +114,15 @@ export class SubscriptionService {
 
   async getPlans() {
     const managedPlans = await this.repo.getPlanDefinitions();
+    const starter = managedPlans.find((plan) => plan.planType === "starter_pack");
     return managedPlans.map((plan) => ({
       planType: plan.planType,
       name: plan.name,
       description: plan.description,
       priceInr: plan.priceInr,
       pricePerEmployeeInr: plan.pricePerEmployeeInr,
+      priceUsd: plan.priceUsd ?? 0,
+      pricePerEmployeeUsd: plan.pricePerEmployeeUsd ?? 0,
       durationDays: plan.durationDays,
       maxEmployees: plan.maxEmployees,
       module: plan.module,
@@ -119,11 +130,17 @@ export class SubscriptionService {
       features: "features" in plan ? plan.features : [],
       active: "active" in plan ? plan.active : true,
       extraEmployeePriceInr: SUBSCRIPTION_ADDONS.extra_employee.priceInr,
+      extraEmployeePriceUsd: SUBSCRIPTION_ADDONS.extra_employee.priceUsd,
       customFeaturePriceInr: SUBSCRIPTION_ADDONS.custom_feature.priceInr,
+      customFeaturePriceUsd: SUBSCRIPTION_ADDONS.custom_feature.priceUsd,
+      autoRenewPlanType: plan.planType === "free_trial" ? "starter_pack" : null,
+      autoRenewPlanName: plan.planType === "free_trial" ? starter?.name || "Starter" : null,
       billingModel:
-        plan.priceInr > 0
-          ? `flat_${plan.priceInr}_inr_up_to_${plan.maxEmployees}_employees`
-          : "trial",
+        plan.planType === "starter_pack" || plan.planType === "free_trial"
+          ? "per_employee"
+          : plan.priceUsd > 0 || plan.priceInr > 0
+            ? "flat"
+            : "trial",
     }));
   }
 
@@ -159,6 +176,8 @@ export class SubscriptionService {
     requireText("description", "Description");
     requireNumber("priceInr", "Price", 0);
     requireNumber("pricePerEmployeeInr", "Per-employee price", 0);
+    requireNumber("priceUsd", "USD price", 0);
+    requireNumber("pricePerEmployeeUsd", "USD per-employee price", 0);
     requireNumber("durationDays", "Duration", 1);
     requireNumber("maxEmployees", "Employee limit", 1);
     requireNumber("sortOrder", "Sort order", 0);
@@ -208,7 +227,12 @@ export class SubscriptionService {
       }
       delete data.planType;
     }
-    if (data.priceInr !== undefined || data.name !== undefined || data.description !== undefined) {
+    if (
+      data.priceInr !== undefined ||
+      data.priceUsd !== undefined ||
+      data.name !== undefined ||
+      data.description !== undefined
+    ) {
       data.razorpayPlanId = null;
     }
     const plan = await this.repo.updatePlanDefinition(id, data as any);
@@ -532,8 +556,10 @@ export class SubscriptionService {
       subscriptionId: subscription.id,
       planName: trialConfig.name,
       trialDays: trialConfig.durationDays,
-      autoPayAmount: starterConfig.priceInr,
-      autoPayCurrency: "INR",
+      autoPayAmount: starterConfig.priceUsd,
+      autoPayCurrency: "USD",
+      autoRenewPlanName: starterConfig.name,
+      maxEmployees: trialConfig.maxEmployees,
     };
   }
 

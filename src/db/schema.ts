@@ -131,6 +131,8 @@ export const subscriptionPlanDefinition = pgTable("subscription_plan_definition"
   description: text("description").notNull(),
   priceInr: integer("price_inr").notNull(),
   pricePerEmployeeInr: integer("price_per_employee_inr").default(0).notNull(),
+  priceUsd: integer("price_usd").default(0).notNull(),
+  pricePerEmployeeUsd: integer("price_per_employee_usd").default(0).notNull(),
   durationDays: integer("duration_days").notNull(),
   maxEmployees: integer("max_employees").notNull(),
   module: varchar("module", { length: 50 }).default("hrms").notNull(),
