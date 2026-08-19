@@ -52,7 +52,13 @@ export const getGoogleCalendarStatus = async (req: Request, res: Response) => {
       return;
     }
     const status = await googleCalendarService.getConnectionStatus(userId);
-    res.status(200).json({ success: true, data: status });
+    res.status(200).json({
+      success: true,
+      data: {
+        ...status,
+        redirectUri: googleCalendarService.getRedirectUri(),
+      },
+    });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message || "Failed to fetch Google Calendar status" });
   }
