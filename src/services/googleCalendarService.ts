@@ -5,12 +5,28 @@ import GoogleCalendarRepository from "../repository/googleCalendar.repo.js";
 const TIMEZONE = "Asia/Kolkata";
 const SCOPES = ["https://www.googleapis.com/auth/calendar.events"];
 
+const getRedirectUri = () => {
+  if (process.env.GOOGLE_REDIRECT_URI) {
+    return process.env.GOOGLE_REDIRECT_URI;
+  }
+
+  const frontendUrl = process.env.FRONTEND_URL || process.env.GOOGLE_CALENDAR_SUCCESS_REDIRECT;
+  if (frontendUrl) {
+    return `${frontendUrl.replace(/\/$/, "")}/api/google-calendar/callback`;
+  }
+
+  const apiPublicUrl = process.env.API_PUBLIC_URL;
+  if (apiPublicUrl) {
+    return `${apiPublicUrl.replace(/\/$/, "")}/google-calendar/callback`;
+  }
+
+  return "http://localhost:5173/api/google-calendar/callback";
+};
+
 const getOAuthClient = () => {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const redirectUri =
-    process.env.GOOGLE_REDIRECT_URI ||
-    `${process.env.API_PUBLIC_URL || "http://localhost:4000"}/google-calendar/callback`;
+  const redirectUri = getRedirectUri();
 
   if (!clientId || !clientSecret) {
     throw new Error("Google OAuth is not configured on the server");
@@ -52,6 +68,10 @@ class GoogleCalendarService {
       scope: SCOPES,
       state: String(userId),
     });
+  }
+
+  getRedirectUri() {
+    return getRedirectUri();
   }
 
   async handleOAuthCallback(code: string, userId: number) {
