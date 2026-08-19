@@ -77,13 +77,19 @@ class GoogleCalendarService {
   async handleOAuthCallback(code: string, userId: number) {
     const client = getOAuthClient();
     const { tokens } = await client.getToken(code);
+
+    if (!tokens.access_token) {
+      throw new Error("Google did not return an access token. Please try connecting again.");
+    }
+
+    client.setCredentials(tokens);
+
     const existing = await this.repo.getByUserId(userId);
     const refreshToken = tokens.refresh_token || existing?.refreshToken;
     if (!refreshToken) {
       throw new Error("Google did not return a refresh token. Please reconnect and grant calendar access.");
     }
 
-    client.setCredentials(tokens);
     const oauth2 = google.oauth2({ version: "v2", auth: client });
     const profile = await oauth2.userinfo.get();
 
