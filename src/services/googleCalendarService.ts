@@ -77,7 +77,9 @@ class GoogleCalendarService {
   async handleOAuthCallback(code: string, userId: number) {
     const client = getOAuthClient();
     const { tokens } = await client.getToken(code);
-    if (!tokens.refresh_token) {
+    const existing = await this.repo.getByUserId(userId);
+    const refreshToken = tokens.refresh_token || existing?.refreshToken;
+    if (!refreshToken) {
       throw new Error("Google did not return a refresh token. Please reconnect and grant calendar access.");
     }
 
@@ -88,7 +90,7 @@ class GoogleCalendarService {
     await this.repo.upsertConnection({
       userId,
       googleEmail: profile.data.email || null,
-      refreshToken: tokens.refresh_token,
+      refreshToken,
       accessToken: tokens.access_token || null,
       tokenExpiry: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
     });
