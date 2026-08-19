@@ -710,6 +710,7 @@ export const emailService = {
     interviewType: string;
     interviewMode: string;
     panel: string;
+    meetUrl?: string;
   }): Promise<boolean> => {
     const {
       email,
@@ -719,6 +720,7 @@ export const emailService = {
       interviewType,
       interviewMode,
       panel,
+      meetUrl,
     } = options;
 
     const formattedDate = scheduledAt.toLocaleDateString("en-IN", {
@@ -731,6 +733,16 @@ export const emailService = {
       minute: "2-digit",
     });
     const panelLabel = panel === "Tech" ? "Tech Panel" : "HR Panel";
+    const meetingSection = meetUrl
+      ? `<div class="detail-row"><span class="detail-label">Google Meet:</span> <span class="detail-value"><a href="${meetUrl}" style="color:#7D1EDB;text-decoration:none;">${meetUrl}</a></span></div>`
+      : interviewMode === "Offline"
+        ? ""
+        : `<div class="detail-row"><span class="detail-label">Meeting Link:</span> <span class="detail-value">Will be shared separately.</span></div>`;
+    const meetingNote = meetUrl
+      ? `<p class="note">Please join using the Google Meet link above and be on time.</p>`
+      : interviewMode === "Offline"
+        ? `<p class="note">Please be on time for your in-person interview.</p>`
+        : `<p class="note">The meet link will be shared soon.</p>`;
 
     const htmlContent = `
 <!DOCTYPE html>
@@ -834,10 +846,10 @@ export const emailService = {
           <div class="detail-row"><span class="detail-label">Interview Type:</span> <span class="detail-value">${interviewType}</span></div>
           <div class="detail-row"><span class="detail-label">Interview Panel:</span> <span class="detail-value">${panelLabel}</span></div>
           <div class="detail-row"><span class="detail-label">Mode:</span> <span class="detail-value">${interviewMode}</span></div>
-          <div class="detail-row"><span class="detail-label">Meeting Link:</span> <span class="detail-value">The meet link will be shared soon.</span></div>
-          <div class="detail-row"><span class="detail-label">Instructions:</span> <span class="detail-value">Please be on time.</span></div>
+          ${meetingSection}
+          <div class="detail-row"><span class="detail-label">Instructions:</span> <span class="detail-value">${meetUrl ? "Please be on time and join using the meeting link above." : interviewMode === "Offline" ? "Please be on time for your in-person interview." : "Please be on time."}</span></div>
         </div>
-        <p class="note">The meet link will be shared soon.</p>
+        ${meetingNote}
         <p>We look forward to speaking with you.</p>
         <p>Best regards,<br/>ORGA HRMS Recruitment Team</p>
       </div>

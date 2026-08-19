@@ -1,6 +1,7 @@
 import HiringRepository from "../repository/hiring.repo.js";
 import { jobs, users } from "../db/schema.js";
 import { emailService } from "./emailService.js";
+import googleCalendarService from "./googleCalendarService.js";
 import crypto from "crypto";
 
 const DEFAULT_ONBOARDING_TASKS = {
@@ -300,14 +301,30 @@ class HiringServices {
     return { message: "Application deleted successfully", success: true, data: result };
   }
 
-  async createInterview(interviewData: any) {
+  async createInterview(interviewData: any, currentUser: typeof users.$inferSelect) {
     if (!interviewData.jobApplicationId) {
       throw new Error("jobApplicationId is required");
+    }
+
+    if (interviewData.idempotencyKey) {
+      const existing = await this.hiringRepo.getInterviewByIdempotencyKey(interviewData.idempotencyKey);
+      if (existing) {
+        return {
+          message: "Interview already scheduled",
+          success: true,
+          data: existing,
+          emailSent: false,
+        };
+      }
     }
 
     const application = await this.hiringRepo.getApplicationById(interviewData.jobApplicationId);
     if (!application) {
       throw new Error("Application not found");
+    }
+
+    if (currentUser.roleId !== 0 && application.adminId !== currentUser.id) {
+      throw new Error("You are not authorized to schedule interviews for this application");
     }
 
     const candidateEmail = interviewData.candidateEmail || application.applicantEmail;
@@ -318,8 +335,24 @@ class HiringServices {
     const interviewType = interviewData.interviewType || "Interview";
     const interviewMode = interviewData.interviewMode || "Online";
     const panel = interviewData.panel || "HR";
+    const requiresMeet = interviewMode === "Online" || interviewMode === "Hybrid";
 
-    const { interviewType: _type, interviewMode: _mode, panel: _panel, candidateEmail: _email, ...dbData } = interviewData;
+    if (requiresMeet) {
+      const calendarStatus = await googleCalendarService.getConnectionStatus(currentUser.id);
+      if (!calendarStatus.connected) {
+        throw new Error("Google Calendar is not connected. Connect Google Calendar before scheduling online interviews.");
+      }
+    }
+
+    const {
+      interviewType: _type,
+      interviewMode: _mode,
+      panel: _panel,
+      candidateEmail: _email,
+      idempotencyKey,
+      ...dbData
+    } = interviewData;
+
     const data = { ...dbData };
     if (data.scheduledAt && typeof data.scheduledAt === "string") {
       const parsed = new Date(data.scheduledAt);
@@ -328,10 +361,53 @@ class HiringServices {
       }
     }
 
-    data.instruction = data.instruction || `${interviewType} - ${interviewMode}`;
-    data.meetingLink = data.meetingLink || "";
+    if (!(data.scheduledAt instanceof Date) || isNaN(data.scheduledAt.getTime())) {
+      throw new Error("A valid interview date and time is required");
+    }
 
-    const result = await this.hiringRepo.createInterview(data);
+    data.instruction = data.instruction || `${interviewType} - ${interviewMode}`;
+    data.interviewType = interviewType;
+    data.interviewMode = interviewMode;
+    data.panel = panel;
+    data.scheduledBy = currentUser.id;
+    data.interviewerId = currentUser.id;
+    data.idempotencyKey = idempotencyKey || crypto.randomUUID();
+    data.meetingLink = null;
+    data.googleEventId = null;
+    data.meetingCode = null;
+
+    let calendarEvent: { googleEventId: string; meetUrl: string; meetingCode: string | null } | null = null;
+
+    if (requiresMeet) {
+      calendarEvent = await googleCalendarService.createInterviewEvent({
+        userId: currentUser.id,
+        candidateName: application.applicantName || "Candidate",
+        candidateEmail,
+        interviewerEmail: currentUser.email,
+        jobTitle: application.jobTitle || "Open Position",
+        interviewType,
+        interviewMode,
+        panel,
+        scheduledAt: data.scheduledAt,
+        instructions: data.instruction,
+      });
+      data.meetingLink = calendarEvent.meetUrl;
+      data.googleEventId = calendarEvent.googleEventId;
+      data.meetingCode = calendarEvent.meetingCode;
+    }
+
+    let result;
+    try {
+      result = await this.hiringRepo.createInterview(data);
+    } catch (error) {
+      if (calendarEvent?.googleEventId) {
+        await googleCalendarService
+          .deleteInterviewEvent(currentUser.id, calendarEvent.googleEventId)
+          .catch(() => undefined);
+      }
+      throw error;
+    }
+
     const scheduledAt = data.scheduledAt instanceof Date ? data.scheduledAt : new Date(data.scheduledAt);
 
     const emailSent = await emailService.sendInterviewScheduledEmail({
@@ -342,12 +418,17 @@ class HiringServices {
       interviewType,
       interviewMode,
       panel,
+      meetUrl: data.meetingLink || undefined,
     });
 
     return {
-      message: emailSent
-        ? "Interview scheduled and email sent successfully"
-        : "Interview scheduled successfully, but email could not be sent",
+      message: requiresMeet
+        ? emailSent
+          ? "Interview scheduled successfully. Google Meet link created and candidate notified."
+          : "Interview scheduled successfully. Google Meet link created, but email could not be sent."
+        : emailSent
+          ? "Interview scheduled and email sent successfully"
+          : "Interview scheduled successfully, but email could not be sent",
       success: true,
       data: result,
       emailSent,
@@ -365,16 +446,96 @@ class HiringServices {
     return { message: "Interview details fetched successfully", success: true, data: result };
   }
 
-  async updateInterview(id: number, interviewData: any) {
+  async updateInterview(id: number, interviewData: any, currentUser: typeof users.$inferSelect) {
     const existing = await this.hiringRepo.getInterviewById(id);
     if (!existing) throw new Error("Interview not found");
-    const result = await this.hiringRepo.updateInterview(id, interviewData);
+
+    const application = existing.jobApplicationId
+      ? await this.hiringRepo.getApplicationById(existing.jobApplicationId)
+      : null;
+    if (application && currentUser.roleId !== 0 && application.adminId !== currentUser.id) {
+      throw new Error("You are not authorized to update this interview");
+    }
+
+    const interviewMode = interviewData.interviewMode || existing.interviewMode || "Online";
+    const interviewType = interviewData.interviewType || existing.interviewType || existing.instruction?.split(" - ")[0] || "Interview";
+    const panel = interviewData.panel || existing.panel || "HR";
+    const requiresMeet = interviewMode === "Online" || interviewMode === "Hybrid";
+
+    const payload = { ...interviewData };
+    if (payload.scheduledAt && typeof payload.scheduledAt === "string") {
+      const parsed = new Date(payload.scheduledAt);
+      if (!isNaN(parsed.getTime())) payload.scheduledAt = parsed;
+    }
+
+    const nextScheduledAt = payload.scheduledAt
+      ? payload.scheduledAt instanceof Date
+        ? payload.scheduledAt
+        : new Date(payload.scheduledAt)
+      : new Date(existing.scheduledAt);
+
+    if (requiresMeet && existing.googleEventId) {
+      const updatedEvent = await googleCalendarService.updateInterviewEvent({
+        userId: existing.scheduledBy || currentUser.id,
+        googleEventId: existing.googleEventId,
+        candidateName: existing.candidateName || application?.applicantName || "Candidate",
+        candidateEmail: existing.candidateEmail || application?.applicantEmail || "",
+        interviewerEmail: currentUser.email,
+        jobTitle: existing.jobTitle || application?.jobTitle || "Open Position",
+        interviewType,
+        interviewMode,
+        panel,
+        scheduledAt: nextScheduledAt,
+        instructions: payload.instruction || existing.instruction || undefined,
+      });
+      payload.meetingLink = updatedEvent.meetUrl || existing.meetingLink;
+      payload.meetingCode = updatedEvent.meetingCode || existing.meetingCode;
+      payload.googleEventId = updatedEvent.googleEventId;
+    }
+
+    payload.interviewType = interviewType;
+    payload.interviewMode = interviewMode;
+    payload.panel = panel;
+    payload.instruction = payload.instruction || `${interviewType} - ${interviewMode}`;
+
+    const result = await this.hiringRepo.updateInterview(id, payload);
+
+    if (
+      application?.applicantEmail &&
+      (payload.scheduledAt || payload.instruction || payload.interviewMode)
+    ) {
+      await emailService.sendInterviewScheduledEmail({
+        email: application.applicantEmail,
+        candidateName: application.applicantName || "Candidate",
+        jobTitle: application.jobTitle || "the open position",
+        scheduledAt: nextScheduledAt,
+        interviewType,
+        interviewMode,
+        panel,
+        meetUrl: result.meetingLink || undefined,
+      });
+    }
+
     return { message: "Interview updated successfully", success: true, data: result };
   }
 
-  async deleteInterview(id: number) {
+  async deleteInterview(id: number, currentUser: typeof users.$inferSelect) {
     const existing = await this.hiringRepo.getInterviewById(id);
     if (!existing) throw new Error("Interview not found");
+
+    const application = existing.jobApplicationId
+      ? await this.hiringRepo.getApplicationById(existing.jobApplicationId)
+      : null;
+    if (application && currentUser.roleId !== 0 && application.adminId !== currentUser.id) {
+      throw new Error("You are not authorized to delete this interview");
+    }
+
+    if (existing.googleEventId) {
+      await googleCalendarService
+        .deleteInterviewEvent(existing.scheduledBy || currentUser.id, existing.googleEventId)
+        .catch(() => undefined);
+    }
+
     const result = await this.hiringRepo.deleteInterview(id);
     return { message: "Interview deleted successfully", success: true, data: result };
   }

@@ -1292,9 +1292,30 @@ export const interview = pgTable("interview", {
     .references(() => users.id),
   scheduledAt: timestamp("scheduled_at").notNull(),
   instruction: text("instruction"),
-  meetingLink: varchar("meeting_link", { length: 255 }),
+  meetingLink: varchar("meeting_link", { length: 512 }),
+  googleEventId: varchar("google_event_id", { length: 255 }),
+  meetingCode: varchar("meeting_code", { length: 64 }),
+  interviewType: varchar("interview_type", { length: 100 }),
+  interviewMode: varchar("interview_mode", { length: 50 }),
+  panel: varchar("panel", { length: 50 }),
+  scheduledBy: integer("scheduled_by").references(() => users.id),
+  idempotencyKey: varchar("idempotency_key", { length: 128 }).unique(),
   status: varchar("status", { length: 50 }).default("scheduled").notNull(),
   feedback: text("feedback"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const googleCalendarConnection = pgTable("google_calendar_connection", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id)
+    .unique(),
+  googleEmail: varchar("google_email", { length: 255 }),
+  refreshToken: text("refresh_token").notNull(),
+  accessToken: text("access_token"),
+  tokenExpiry: timestamp("token_expiry"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

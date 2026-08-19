@@ -220,7 +220,8 @@ class HiringController {
   // ─── Interviews ────────────────────────────────────────────────
   async createInterview(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await this.hiringServices.createInterview(req.body);
+      const user = res.locals.user;
+      const result = await this.hiringServices.createInterview(req.body, user);
       res.status(201).json(result);
     } catch (error: any) {
       res.status(400).json({ success: false, message: error.message || "Failed to schedule interview" });
@@ -258,7 +259,8 @@ class HiringController {
         res.status(400).json({ success: false, message: "Invalid interview ID" });
         return;
       }
-      const result = await this.hiringServices.updateInterview(id, req.body);
+      const user = res.locals.user;
+      const result = await this.hiringServices.updateInterview(id, req.body, user);
       res.status(200).json(result);
     } catch (error: any) {
       res.status(400).json({ success: false, message: error.message || "Failed to update interview" });
@@ -272,7 +274,8 @@ class HiringController {
         res.status(400).json({ success: false, message: "Invalid interview ID" });
         return;
       }
-      const result = await this.hiringServices.deleteInterview(id);
+      const user = res.locals.user;
+      const result = await this.hiringServices.deleteInterview(id, user);
       res.status(200).json(result);
     } catch (error: any) {
       res.status(400).json({ success: false, message: error.message || "Failed to delete interview" });

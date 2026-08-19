@@ -95,6 +95,7 @@ class HiringRepository {
         updatedAt: jobApplication.updatedAt,
         jobTitle: jobs.title,
         jobLocation: jobs.location,
+        adminId: jobs.adminId,
       })
       .from(jobApplication)
       .leftJoin(jobs, eq(jobApplication.jobId, jobs.id))
@@ -156,6 +157,15 @@ class HiringRepository {
     return result[0];
   }
 
+  async getInterviewByIdempotencyKey(key: string) {
+    const [row] = await db
+      .select()
+      .from(interview)
+      .where(eq(interview.idempotencyKey, key))
+      .limit(1);
+    return row;
+  }
+
   async getAllInterviews(adminId?: number) {
     const query = db
       .select({
@@ -165,6 +175,12 @@ class HiringRepository {
         scheduledAt: interview.scheduledAt,
         instruction: interview.instruction,
         meetingLink: interview.meetingLink,
+        googleEventId: interview.googleEventId,
+        meetingCode: interview.meetingCode,
+        interviewType: interview.interviewType,
+        interviewMode: interview.interviewMode,
+        panel: interview.panel,
+        scheduledBy: interview.scheduledBy,
         status: interview.status,
         feedback: interview.feedback,
         createdAt: interview.createdAt,
@@ -193,6 +209,12 @@ class HiringRepository {
         scheduledAt: interview.scheduledAt,
         instruction: interview.instruction,
         meetingLink: interview.meetingLink,
+        googleEventId: interview.googleEventId,
+        meetingCode: interview.meetingCode,
+        interviewType: interview.interviewType,
+        interviewMode: interview.interviewMode,
+        panel: interview.panel,
+        scheduledBy: interview.scheduledBy,
         status: interview.status,
         feedback: interview.feedback,
         createdAt: interview.createdAt,

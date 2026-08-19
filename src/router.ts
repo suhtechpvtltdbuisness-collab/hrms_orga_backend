@@ -35,6 +35,7 @@ import contactRouter from "./router/contactRouter.js";
 import financialReportsRouter from "./router/financialReportsRouter.js";
 import expenseRouter from "./router/expenseRouter.js";
 import announcementRouter from "./router/announcementRouter.js";
+import googleCalendarRouter from "./router/googleCalendarRouter.js";
 
 const router = Router();
 
@@ -81,5 +82,6 @@ router.use("/expenses", expenseRouter);
 router.use("/announcements", announcementRouter);
 router.use("/contact", contactRouter);
 router.use("/financial-reports", financialReportsRouter);
+router.use("/google-calendar", googleCalendarRouter);
 
 export default router;
