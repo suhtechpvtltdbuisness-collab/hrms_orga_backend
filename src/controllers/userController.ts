@@ -83,8 +83,53 @@ class UserController {
       const page = Math.max(1, parseInt(req.query.page as string) || 1);
       const limit = Math.max(1, parseInt(req.query.limit as string) || 10);
       const search = req.query.search as string | undefined;
+      const role = req.query.role as string | undefined;
 
-      const result = await this.userServices.getAllUsersForSuperAdmin(page, limit, search);
+      const result = await this.userServices.getAllUsersForSuperAdmin(page, limit, search, role);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getDeletedUsersForSuperAdmin(req: Request, res: Response, next: NextFunction) {
+    try {
+      const page = Math.max(1, parseInt(req.query.page as string) || 1);
+      const limit = Math.max(1, parseInt(req.query.limit as string) || 10);
+      const search = req.query.search as string | undefined;
+      const role = req.query.role as string | undefined;
+
+      const result = await this.userServices.getDeletedUsersForSuperAdmin(page, limit, search, role);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async softDeleteUserForSuperAdmin(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = Number(req.params.id);
+      const result = await this.userServices.softDeleteUserForSuperAdmin(id);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async softDeleteUsersForSuperAdmin(req: Request, res: Response, next: NextFunction) {
+    try {
+      const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+      const result = await this.userServices.softDeleteUsersForSuperAdmin(ids);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async restoreUserForSuperAdmin(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = Number(req.params.id);
+      const result = await this.userServices.restoreUserForSuperAdmin(id);
       res.status(200).json(result);
     } catch (error) {
       next(error);

@@ -245,8 +245,19 @@ class UserServices {
     };
   }
 
-  async getAllUsersForSuperAdmin(page: number = 1, limit: number = 10, search?: string) {
-    const { data, total } = await this.userRepo.getAllUsersForSuperAdmin(page, limit, search);
+  async getAllUsersForSuperAdmin(
+    page: number = 1,
+    limit: number = 10,
+    search?: string,
+    role?: string,
+  ) {
+    const { data, total } = await this.userRepo.getAllUsersForSuperAdmin(
+      page,
+      limit,
+      search,
+      role,
+      false,
+    );
     return {
       message: "successfully fetched all users for super admin",
       success: true,
@@ -257,6 +268,127 @@ class UserServices {
         currentPage: page,
         limit,
       },
+    };
+  }
+
+  async getDeletedUsersForSuperAdmin(
+    page: number = 1,
+    limit: number = 10,
+    search?: string,
+    role?: string,
+  ) {
+    const { data, total } = await this.userRepo.getAllUsersForSuperAdmin(
+      page,
+      limit,
+      search,
+      role,
+      true,
+    );
+    return {
+      message: "successfully fetched deleted users",
+      success: true,
+      data: {
+        users: data,
+        total,
+        totalPages: Math.ceil(total / limit),
+        currentPage: page,
+        limit,
+      },
+    };
+  }
+
+  private isOrgAdmin(user: typeof users.$inferSelect) {
+    return user.roleId === 1 || user.type === "admin" || user.isAdmin === true;
+  }
+
+  async softDeleteUserForSuperAdmin(id: number) {
+    const existingUser = await this.userRepo.getUserById(id);
+    if (!existingUser) {
+      throw new Error("User not found");
+    }
+    if (existingUser.roleId === 0) {
+      throw new Error("Super admin cannot be deleted");
+    }
+
+    const ids = [id];
+    if (this.isOrgAdmin(existingUser)) {
+      const employeeIds = await this.userRepo.getEmployeeUserIdsByAdminId(id, false);
+      ids.push(...employeeIds);
+    }
+
+    const deleted = await this.userRepo.setUsersDeleted(ids, true);
+    return {
+      success: true,
+      message: this.isOrgAdmin(existingUser)
+        ? "Admin and their employees were deleted"
+        : "Employee deleted successfully",
+      data: { deletedCount: deleted.length },
+    };
+  }
+
+  async softDeleteUsersForSuperAdmin(ids: number[]) {
+    const uniqueIds = [
+      ...new Set(
+        (ids || [])
+          .map((id) => Number(id))
+          .filter((id) => Number.isInteger(id) && id > 0),
+      ),
+    ];
+    if (!uniqueIds.length) {
+      throw new Error("No users selected");
+    }
+
+    const toDelete = new Set<number>();
+    for (const id of uniqueIds) {
+      const existingUser = await this.userRepo.getUserById(id);
+      if (!existingUser || existingUser.roleId === 0) continue;
+      toDelete.add(id);
+      if (this.isOrgAdmin(existingUser)) {
+        const employeeIds = await this.userRepo.getEmployeeUserIdsByAdminId(
+          id,
+          false,
+        );
+        employeeIds.forEach((employeeId) => toDelete.add(employeeId));
+      }
+    }
+
+    if (!toDelete.size) {
+      throw new Error("No eligible users to delete");
+    }
+
+    const deleted = await this.userRepo.setUsersDeleted([...toDelete], true);
+    return {
+      success: true,
+      message: `${deleted.length} user(s) deleted`,
+      data: { deletedCount: deleted.length },
+    };
+  }
+
+  async restoreUserForSuperAdmin(id: number) {
+    const existingUser = await this.userRepo.getUserById(id, true);
+    if (!existingUser) {
+      throw new Error("User not found");
+    }
+    if (!existingUser.isDeleted) {
+      throw new Error("User is not deleted");
+    }
+    if (existingUser.roleId === 0) {
+      throw new Error("Super admin cannot be restored this way");
+    }
+
+    const ids = [id];
+    if (this.isOrgAdmin(existingUser)) {
+      const employeeIds = await this.userRepo.getEmployeeUserIdsByAdminId(id, true);
+      ids.push(...employeeIds);
+    }
+
+    const restored = await this.userRepo.setUsersDeleted(ids, false);
+    return {
+      success: true,
+      message: this.isOrgAdmin(existingUser)
+        ? "Admin and their employees were restored"
+        : "Employee restored successfully",
+      data: { restoredCount: restored.length },
     };
   }
 

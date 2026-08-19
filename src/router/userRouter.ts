@@ -8,6 +8,18 @@ const userController = new UserController();
 userRouter.get("/superadmin/all", authenticate, authorizeSuperAdmin, (req, res, next) =>
   userController.getAllUsersForSuperAdmin(req, res, next),
 );
+userRouter.get("/superadmin/deleted", authenticate, authorizeSuperAdmin, (req, res, next) =>
+  userController.getDeletedUsersForSuperAdmin(req, res, next),
+);
+userRouter.post("/superadmin/bulk-delete", authenticate, authorizeSuperAdmin, (req, res, next) =>
+  userController.softDeleteUsersForSuperAdmin(req, res, next),
+);
+userRouter.delete("/superadmin/:id", authenticate, authorizeSuperAdmin, (req, res, next) =>
+  userController.softDeleteUserForSuperAdmin(req, res, next),
+);
+userRouter.patch("/superadmin/:id/restore", authenticate, authorizeSuperAdmin, (req, res, next) =>
+  userController.restoreUserForSuperAdmin(req, res, next),
+);
 
 userRouter.post("/", authenticate, authorizeAdmin, (req, res, next) =>
   userController.createUser(req, res, next),

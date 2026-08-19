@@ -10,7 +10,8 @@ import {
   department,
   designation,
 } from "../db/schema.js";
-import { eq, ne, and, sql } from "drizzle-orm";
+import { eq, ne, and, or, sql, inArray } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 
 class UserRepository {
   private db: typeof db;
@@ -101,13 +102,43 @@ class UserRepository {
     return result;
   }
 
-  async getUserById(id: number) {
+  async getUserById(id: number, includeDeleted = false) {
     const result = await db
       .select()
       .from(users)
-      .where(and(eq(users.id, id), eq(users.isDeleted, false)))
+      .where(
+        includeDeleted
+          ? eq(users.id, id)
+          : and(eq(users.id, id), eq(users.isDeleted, false)),
+      )
       .limit(1);
     return result[0];
+  }
+
+  async getEmployeeUserIdsByAdminId(adminId: number, deleted?: boolean) {
+    const rows = await db
+      .select({ userId: Employee.userId })
+      .from(Employee)
+      .innerJoin(users, eq(users.id, Employee.userId))
+      .where(
+        deleted === undefined
+          ? eq(Employee.adminId, adminId)
+          : and(eq(Employee.adminId, adminId), eq(users.isDeleted, deleted)),
+      );
+    return rows.map((row) => row.userId);
+  }
+
+  async setUsersDeleted(ids: number[], isDeleted: boolean) {
+    if (!ids.length) return [];
+    return db
+      .update(users)
+      .set({
+        isDeleted,
+        active: !isDeleted,
+        updatedAt: new Date(),
+      })
+      .where(and(inArray(users.id, ids), ne(users.roleId, 0)))
+      .returning({ id: users.id });
   }
 
   async getUserByEmail(email: string) {
@@ -264,25 +295,46 @@ class UserRepository {
     });
   }
 
-  async getAllUsersForSuperAdmin(page: number, limit: number, search?: string) {
+  async getAllUsersForSuperAdmin(
+    page: number,
+    limit: number,
+    search?: string,
+    role?: string,
+    deleted = false,
+  ) {
     const offset = (page - 1) * limit;
-    
-    let whereClause = and(eq(users.isDeleted, false), ne(users.roleId, 0));
-    
-    if (search) {
-      whereClause = and(
-        whereClause,
-        sql`(${users.name} ILIKE ${'%' + search + '%'} OR ${users.email} ILIKE ${'%' + search + '%'})`
+    const adminUser = alias(users, "admin_user");
+    const conditions = [eq(users.isDeleted, deleted), ne(users.roleId, 0)];
+
+    if (role === "admin") {
+      conditions.push(
+        or(eq(users.roleId, 1), eq(users.type, "admin"), eq(users.isAdmin, true))!,
+      );
+    } else if (role === "employee") {
+      conditions.push(
+        and(
+          ne(users.roleId, 1),
+          ne(users.type, "admin"),
+          eq(users.isAdmin, false),
+        )!,
       );
     }
-    
+
+    if (search) {
+      conditions.push(
+        sql`(${users.name} ILIKE ${"%" + search + "%"} OR ${users.email} ILIKE ${"%" + search + "%"})`,
+      );
+    }
+
+    const whereClause = and(...conditions);
+
     const [countResult] = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(users)
       .where(whereClause);
-      
+
     const total = countResult?.count ?? 0;
-    
+
     const data = await db
       .select({
         id: users.id,
@@ -290,10 +342,22 @@ class UserRepository {
         email: users.email,
         phone: users.phone,
         active: users.active,
+        isDeleted: users.isDeleted,
         createdAt: users.createdAt,
+        updatedAt: users.updatedAt,
         roleId: users.roleId,
         type: users.type,
+        isAdmin: users.isAdmin,
         profilePic: users.profilePic,
+        adminId: Employee.adminId,
+        adminName: adminUser.name,
+        employeeCount: sql<number>`(
+          select count(*)::int
+          from employee e
+          inner join users eu on eu.id = e.user_id
+          where e.admin_id = ${users.id}
+            and eu.is_deleted = ${deleted}
+        )`,
         plan: {
           id: Plain.id,
           planType: Plain.planType,
@@ -301,15 +365,14 @@ class UserRepository {
           expired: Plain.expired,
           price: Plain.price,
           name: subscriptionPlanDefinition.name,
-        }
+        },
       })
       .from(users)
+      .leftJoin(Employee, eq(Employee.userId, users.id))
+      .leftJoin(adminUser, eq(adminUser.id, Employee.adminId))
       .leftJoin(
         Plain,
-        and(
-          eq(Plain.userId, users.id),
-          eq(Plain.isDeleted, false)
-        )
+        and(eq(Plain.userId, users.id), eq(Plain.isDeleted, false)),
       )
       .leftJoin(
         subscriptionPlanDefinition,
@@ -318,7 +381,7 @@ class UserRepository {
       .where(whereClause)
       .limit(limit)
       .offset(offset);
-      
+
     return { data, total };
   }
 }
