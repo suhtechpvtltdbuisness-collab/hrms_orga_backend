@@ -28,19 +28,34 @@ export const getGoogleCalendarConnectUrl = async (req: Request, res: Response) =
 };
 
 export const googleCalendarCallback = async (req: Request, res: Response) => {
+  const frontendRedirect = getFrontendRedirect();
   try {
     const code = req.query.code as string | undefined;
     const state = req.query.state as string | undefined;
+    const errorParam = req.query.error as string | undefined;
     const userId = Number(state);
+
+    console.log("[GoogleCalendarCallback] query:", { code: code ? "present" : "missing", state, error: errorParam });
+    console.log("[GoogleCalendarCallback] frontendRedirect:", frontendRedirect);
+
+    if (errorParam) {
+      console.error("[GoogleCalendarCallback] Google returned error:", errorParam);
+      res.redirect(`${frontendRedirect}/hrms/hiring-and-recruitment/new-hiring/ats-screening/schedule-interview?googleCalendar=error&reason=${encodeURIComponent(errorParam)}`);
+      return;
+    }
+
     if (!code || !Number.isInteger(userId) || userId <= 0) {
-      res.redirect(`${getFrontendRedirect()}/hrms/hiring-and-recruitment/new-hiring/ats-screening/schedule-interview?googleCalendar=error`);
+      console.error("[GoogleCalendarCallback] Invalid code or userId:", { code: !!code, userId });
+      res.redirect(`${frontendRedirect}/hrms/hiring-and-recruitment/new-hiring/ats-screening/schedule-interview?googleCalendar=error&reason=invalid_state`);
       return;
     }
 
     await googleCalendarService.handleOAuthCallback(code, userId);
-    res.redirect(`${getFrontendRedirect()}/hrms/hiring-and-recruitment/new-hiring/ats-screening/schedule-interview?googleCalendar=connected`);
-  } catch {
-    res.redirect(`${getFrontendRedirect()}/hrms/hiring-and-recruitment/new-hiring/ats-screening/schedule-interview?googleCalendar=error`);
+    console.log("[GoogleCalendarCallback] Success for userId:", userId);
+    res.redirect(`${frontendRedirect}/hrms/hiring-and-recruitment/new-hiring/ats-screening/schedule-interview?googleCalendar=connected`);
+  } catch (err: any) {
+    console.error("[GoogleCalendarCallback] Exception:", err?.message || err);
+    res.redirect(`${frontendRedirect}/hrms/hiring-and-recruitment/new-hiring/ats-screening/schedule-interview?googleCalendar=error&reason=${encodeURIComponent(err?.message || "unknown")}`);
   }
 };
 
