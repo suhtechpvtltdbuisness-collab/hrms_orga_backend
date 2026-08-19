@@ -1,5 +1,4 @@
 import crypto from "crypto";
-import { OAuth2Client } from "google-auth-library";
 import { google } from "googleapis";
 import GoogleCalendarRepository from "../repository/googleCalendar.repo.js";
 
@@ -17,7 +16,7 @@ const getOAuthClient = () => {
     throw new Error("Google OAuth is not configured on the server");
   }
 
-  return new OAuth2Client(clientId, clientSecret, redirectUri);
+  return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
 };
 
 const toKolkataDateTime = (date: Date) =>
