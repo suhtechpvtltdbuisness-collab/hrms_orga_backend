@@ -90,18 +90,24 @@ class GoogleCalendarService {
       throw new Error("Google did not return a refresh token. Please reconnect and grant calendar access.");
     }
 
-    const oauth2 = google.oauth2({ version: "v2", auth: client });
-    const profile = await oauth2.userinfo.get();
+    let googleEmail: string | null = null;
+    try {
+      const oauth2 = google.oauth2({ version: "v2", auth: client });
+      const profile = await oauth2.userinfo.get();
+      googleEmail = profile.data.email || null;
+    } catch (profileErr: any) {
+      console.warn("[GoogleCalendar] Could not fetch user email:", profileErr?.message);
+    }
 
     await this.repo.upsertConnection({
       userId,
-      googleEmail: profile.data.email || null,
+      googleEmail,
       refreshToken,
       accessToken: tokens.access_token || null,
       tokenExpiry: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
     });
 
-    return { email: profile.data.email || null };
+    return { email: googleEmail };
   }
 
   async getConnectionStatus(userId: number) {
