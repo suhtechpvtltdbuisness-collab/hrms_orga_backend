@@ -2050,3 +2050,76 @@ export const announcementRead = pgTable(
   },
   (table) => [unique().on(table.announcementId, table.userId)],
 );
+
+// ==========================
+// Visitor Intelligence
+// ==========================
+
+export const identityStatusEnum = pgEnum("identity_status", [
+  "anonymous",
+  "company_identified",
+  "person_identified",
+  "authenticated",
+]);
+
+export const visitors = pgTable("visitors", {
+  id: serial("id").primaryKey(),
+  visitorId: varchar("visitor_id", { length: 128 }).notNull().unique(),
+  knownUserId: integer("known_user_id").references(() => users.id, { onDelete: "set null" }),
+  firstSeenAt: timestamp("first_seen_at").defaultNow().notNull(),
+  lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
+  firstPage: text("first_page"),
+  lastPage: text("last_page"),
+  firstReferrer: text("first_referrer"),
+  lastReferrer: text("last_referrer"),
+  utmSource: varchar("utm_source", { length: 256 }),
+  utmMedium: varchar("utm_medium", { length: 256 }),
+  utmCampaign: varchar("utm_campaign", { length: 256 }),
+  utmTerm: varchar("utm_term", { length: 256 }),
+  utmContent: varchar("utm_content", { length: 256 }),
+  ipAddress: varchar("ip_address", { length: 64 }),
+  country: varchar("country", { length: 128 }),
+  region: varchar("region", { length: 128 }),
+  city: varchar("city", { length: 128 }),
+  companyName: varchar("company_name", { length: 256 }),
+  companyDomain: varchar("company_domain", { length: 256 }),
+  personName: varchar("person_name", { length: 256 }),
+  workEmail: varchar("work_email", { length: 256 }),
+  phone: varchar("phone", { length: 64 }),
+  jobTitle: varchar("job_title", { length: 256 }),
+  linkedinUrl: text("linkedin_url"),
+  identityStatus: identityStatusEnum("identity_status").default("anonymous").notNull(),
+  identityProvider: varchar("identity_provider", { length: 64 }),
+  matchConfidence: doublePrecision("match_confidence"),
+  leadScore: integer("lead_score").default(0).notNull(),
+  pageViewCount: integer("page_view_count").default(0).notNull(),
+  sessionCount: integer("session_count").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const visitorSessions = pgTable("visitor_sessions", {
+  id: serial("id").primaryKey(),
+  visitorId: varchar("visitor_id", { length: 128 }).notNull().references(() => visitors.visitorId, { onDelete: "cascade" }),
+  sessionId: varchar("session_id", { length: 128 }).notNull().unique(),
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  lastActivityAt: timestamp("last_activity_at").defaultNow().notNull(),
+  endedAt: timestamp("ended_at"),
+  landingPage: text("landing_page"),
+  exitPage: text("exit_page"),
+  referrer: text("referrer"),
+  durationSeconds: integer("duration_seconds"),
+  device: varchar("device", { length: 64 }),
+  browser: varchar("browser", { length: 64 }),
+  os: varchar("os", { length: 64 }),
+});
+
+export const visitorEvents = pgTable("visitor_events", {
+  id: serial("id").primaryKey(),
+  visitorId: varchar("visitor_id", { length: 128 }).notNull(),
+  sessionId: varchar("session_id", { length: 128 }).notNull(),
+  eventName: varchar("event_name", { length: 128 }).notNull(),
+  pageUrl: text("page_url"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});

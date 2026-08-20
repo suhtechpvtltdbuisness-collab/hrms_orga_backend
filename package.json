@@ -10,7 +10,8 @@
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "migrate": "tsx src/db/migrate.ts",
-    "migrate:interview-google-meet": "tsx src/db/migrate_interview_google_meet.ts"
+    "migrate:interview-google-meet": "tsx src/db/migrate_interview_google_meet.ts",
+    "migrate:visitors": "tsx src/db/migrate_visitors.ts"
   },
   "keywords": [],
   "author": "",
