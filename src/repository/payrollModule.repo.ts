@@ -21,6 +21,7 @@ import {
   salaryStructure,
   salaryStructureAssignment,
   salaryStructureComponent,
+  organizations,
   users,
 } from "../db/schema.js";
 
@@ -516,6 +517,20 @@ export class PayrollModuleRepository {
       .where(and(eq(salarySlip.id, id), eq(salarySlip.isDeleted, false)))
       .returning();
     return updated;
+  }
+
+  async getOrganizationById(id: number) {
+    const [org] = await db
+      .select({
+        id: organizations.id,
+        name: organizations.name,
+        organizationEmail: organizations.organizationEmail,
+        organizationPhone: organizations.organizationPhone,
+      })
+      .from(organizations)
+      .where(eq(organizations.id, id))
+      .limit(1);
+    return org ?? null;
   }
 
   async getSalarySlips(filters: { empId?: number; adminId?: number; finalizedOnly?: boolean } = {}) {

@@ -37,6 +37,41 @@ function resolveLocalUploadPath(urlOrPath: string): string | null {
   }
 }
 
+function isAllowedRemoteUploadUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (!parsed.pathname.startsWith("/uploads/")) return false;
+    const host = parsed.hostname.toLowerCase();
+    return (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host.endsWith(".railway.app") ||
+      host.endsWith(".orga.cc") ||
+      host === "orga.cc"
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function streamRemoteFile(url: string, res: Response): Promise<boolean> {
+  try {
+    const upstream = await fetch(url);
+    if (!upstream.ok) return false;
+
+    const contentType =
+      upstream.headers.get("content-type") || "application/octet-stream";
+    res.setHeader("Content-Type", contentType.split(";")[0]);
+
+    const buffer = Buffer.from(await upstream.arrayBuffer());
+    if (!buffer.length) return false;
+    res.send(buffer);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function streamLocalFile(filePath: string, res: Response): Promise<boolean> {
   try {
     await fs.promises.access(filePath, fs.constants.R_OK);
@@ -198,6 +233,10 @@ uploadRouter.get(
       if (localPath) {
         const served = await streamLocalFile(localPath, res);
         if (served) return;
+        if (isAllowedRemoteUploadUrl(url)) {
+          const proxied = await streamRemoteFile(url, res);
+          if (proxied) return;
+        }
         res.status(404).send("File not found");
         return;
       }

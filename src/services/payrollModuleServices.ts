@@ -672,7 +672,19 @@ export class PayrollModuleServices {
     const filters = isAdmin
       ? { adminId: currentUser.id }
       : { empId: currentUser.id, finalizedOnly: true };
-    return response("Salary slips fetched", await this.repo.getSalarySlips(filters));
+    const slips = await this.repo.getSalarySlips(filters);
+    const organization = currentUser.organizationId
+      ? await this.repo.getOrganizationById(currentUser.organizationId)
+      : null;
+    return response(
+      "Salary slips fetched",
+      slips.map((row) => ({
+        ...row,
+        organizationName: organization?.name ?? null,
+        organizationEmail: organization?.organizationEmail ?? null,
+        organizationPhone: organization?.organizationPhone ?? null,
+      })),
+    );
   }
 
   async finalizeSalarySlip(id: number, currentUser: CurrentUser) {

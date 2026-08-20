@@ -3,7 +3,7 @@ import bcrypt from "bcrypt";
 import crypto from "crypto";
 import { OAuth2Client } from "google-auth-library";
 import { db } from "../db/connection.js";
-import { users } from "../db/schema.js";
+import { organizations, users } from "../db/schema.js";
 import { subscriptionService } from "../services/subscriptionServices.js";
 import { generateTokens, verifyToken } from "../utils/jwt.js";
 import { setAuthCookies, clearAuthCookies } from "../utils/authCookies.js";
@@ -12,6 +12,21 @@ import { emailService } from "../services/emailService.js";
 import { FaceBiometricService, normalizeFaceProviderError } from "../services/faceBiometricService.js";
 
 const faceBiometricService = new FaceBiometricService();
+
+async function getUserOrganization(organizationId: number | null | undefined) {
+  if (!organizationId) return null;
+  const [org] = await db
+    .select({
+      id: organizations.id,
+      name: organizations.name,
+      organizationEmail: organizations.organizationEmail,
+      organizationPhone: organizations.organizationPhone,
+    })
+    .from(organizations)
+    .where(eq(organizations.id, organizationId))
+    .limit(1);
+  return org ?? null;
+}
 
 // Cooldown map for rate-limiting resend verification
 const resendCooldowns = new Map<string, number>();
@@ -179,6 +194,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     const subscription = await subscriptionService.getSubscriptionSummary(
       user.id,
     );
+    const organization = await getUserOrganization(user.organizationId);
 
     // Remove password from response
     const { password: _, ...userWithoutPassword } = user;
@@ -187,7 +203,11 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       success: true,
       message: "Login successful",
       data: {
-        user: userWithoutPassword,
+        user: {
+          ...userWithoutPassword,
+          organization,
+          organizationName: organization?.name ?? null,
+        },
         tokens,
         subscription,
       },
@@ -217,13 +237,18 @@ export const faceLogin = async (req: Request, res: Response): Promise<void> => {
     setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
 
     const subscription = await subscriptionService.getSubscriptionSummary(user.id);
+    const organization = await getUserOrganization(user.organizationId);
     const { password: _, ...userWithoutPassword } = user;
 
     res.status(200).json({
       success: true,
       message: "Face login successful",
       data: {
-        user: userWithoutPassword,
+        user: {
+          ...userWithoutPassword,
+          organization,
+          organizationName: organization?.name ?? null,
+        },
         tokens,
         subscription,
         confidence,
@@ -343,6 +368,7 @@ export const getProfile = async (
     const subscription = await subscriptionService.getSubscriptionSummary(
       user.id,
     );
+    const organization = await getUserOrganization(user.organizationId);
 
     res.status(200).json({
       success: true,
@@ -362,6 +388,9 @@ export const getProfile = async (
           active: user.active,
           profilePic: user.profilePic,
           isEmailVerified: user.isEmailVerified,
+          organizationId: user.organizationId,
+          organization,
+          organizationName: organization?.name ?? null,
         },
         subscription,
         plan:
@@ -488,6 +517,7 @@ export const googleLogin = async (req: Request, res: Response): Promise<void> =>
     const subscription = await subscriptionService.getSubscriptionSummary(
       user.id,
     );
+    const organization = await getUserOrganization(user.organizationId);
 
     const { password: _, ...userWithoutPassword } = user;
 
@@ -495,7 +525,11 @@ export const googleLogin = async (req: Request, res: Response): Promise<void> =>
       success: true,
       message: existingUser ? "Login successful" : "Account created and login successful",
       data: {
-        user: userWithoutPassword,
+        user: {
+          ...userWithoutPassword,
+          organization,
+          organizationName: organization?.name ?? null,
+        },
         tokens,
         subscription,
       },
