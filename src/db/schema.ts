@@ -102,6 +102,19 @@ export const payrollAccountingStatusEnum = pgEnum(
   "payroll_accounting_status",
   ["pending", "stubbed", "posted", "failed"],
 );
+export const projectStatusEnum = pgEnum("project_status", [
+  "TODO",
+  "IN_PROGRESS",
+  "IN_REVIEW",
+  "COMPLETED",
+  "BLOCKED",
+]);
+export const projectPriorityEnum = pgEnum("project_priority", [
+  "LOW",
+  "MEDIUM",
+  "HIGH",
+  "URGENT",
+]);
 
 // Organization Table
 export const Plain = pgTable("plain", {
@@ -2050,6 +2063,91 @@ export const announcementRead = pgTable(
   },
   (table) => [unique().on(table.announcementId, table.userId)],
 );
+
+// ==========================
+// Project Management
+// ==========================
+
+export type ProjectActivityMeta = Record<string, unknown>;
+
+export const projectManagementProject = pgTable("project_management_project", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id")
+    .notNull()
+    .references((): any => organizations.id),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  status: projectStatusEnum("status").default("TODO").notNull(),
+  priority: projectPriorityEnum("priority").default("MEDIUM").notNull(),
+  ownerId: integer("owner_id").references(() => users.id),
+  progress: integer("progress").default(0).notNull(),
+  startDate: varchar("start_date", { length: 50 }),
+  dueDate: varchar("due_date", { length: 50 }),
+  isArchived: boolean("is_archived").default(false).notNull(),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const projectManagementMember = pgTable(
+  "project_management_member",
+  {
+    id: serial("id").primaryKey(),
+    projectId: integer("project_id")
+      .notNull()
+      .references(() => projectManagementProject.id, { onDelete: "cascade" }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: varchar("role", { length: 50 }).default("MEMBER").notNull(),
+    addedBy: integer("added_by").references(() => users.id),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [unique().on(table.projectId, table.userId)],
+);
+
+export const projectManagementTask = pgTable("project_management_task", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id")
+    .notNull()
+    .references(() => projectManagementProject.id, { onDelete: "cascade" }),
+  organizationId: integer("organization_id")
+    .notNull()
+    .references((): any => organizations.id),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  status: projectStatusEnum("status").default("TODO").notNull(),
+  priority: projectPriorityEnum("priority").default("MEDIUM").notNull(),
+  assigneeId: integer("assignee_id").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  createdBy: integer("created_by").references(() => users.id),
+  startDate: varchar("start_date", { length: 50 }),
+  dueDate: varchar("due_date", { length: 50 }),
+  progress: integer("progress").default(0).notNull(),
+  isArchived: boolean("is_archived").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const projectManagementActivity = pgTable("project_management_activity", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id")
+    .notNull()
+    .references(() => projectManagementProject.id, { onDelete: "cascade" }),
+  organizationId: integer("organization_id")
+    .notNull()
+    .references((): any => organizations.id),
+  actorId: integer("actor_id").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  entityType: varchar("entity_type", { length: 50 }).default("PROJECT").notNull(),
+  entityId: integer("entity_id"),
+  type: varchar("type", { length: 80 }).notNull(),
+  message: text("message").notNull(),
+  meta: jsonb("meta").$type<ProjectActivityMeta>().default({}).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
 
 // ==========================
 // Visitor Intelligence

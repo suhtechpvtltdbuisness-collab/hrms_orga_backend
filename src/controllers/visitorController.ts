@@ -9,6 +9,11 @@ function getClientIp(req: Request): string | undefined {
   return req.socket.remoteAddress;
 }
 
+function readParam(value: string | string[] | undefined) {
+  if (Array.isArray(value)) return value[0];
+  return String(value || "");
+}
+
 // POST /api/visitors/identify
 export async function identifyVisitor(req: Request, res: Response) {
   const { visitorId, sessionId, pageUrl, referrer, utm, device } = req.body;
@@ -219,7 +224,7 @@ export async function adminListVisitors(req: Request, res: Response) {
 
 // GET /api/admin/visitors/:visitorId
 export async function adminGetVisitor(req: Request, res: Response) {
-  const { visitorId } = req.params;
+  const visitorId = readParam(req.params.visitorId);
   const visitor = await repo.getVisitorById(visitorId);
   if (!visitor) {
     res.status(404).json({ success: false, message: "Visitor not found" });
@@ -236,7 +241,7 @@ export async function adminGetVisitor(req: Request, res: Response) {
 
 // GET /api/admin/visitors/:visitorId/events
 export async function adminGetVisitorEvents(req: Request, res: Response) {
-  const { visitorId } = req.params;
+  const visitorId = readParam(req.params.visitorId);
   const events = await repo.getVisitorEvents(visitorId);
   res.json({ success: true, data: events });
 }
