@@ -18,6 +18,7 @@ import {
   projectManagementMember,
   projectManagementProject,
   projectManagementTask,
+  projectManagementTaskComment,
   users,
 } from "../db/schema.js";
 
@@ -30,12 +31,15 @@ export type ProjectListFilters = {
 export type ProjectTaskFilters = {
   search?: string;
   status?: string;
+  priority?: string;
   assigneeId?: number;
+  projectId?: number;
 };
 
 const ownerUser = alias(users, "project_owner");
 const assigneeUser = alias(users, "task_assignee");
 const activityActor = alias(users, "project_activity_actor");
+const commentAuthor = alias(users, "task_comment_author");
 
 export class ProjectRepository {
   async findUserInOrganization(userId: number, organizationId: number) {
@@ -283,6 +287,9 @@ export class ProjectRepository {
     if (filters.status) {
       conditions.push(eq(projectManagementTask.status, filters.status as any));
     }
+    if (filters.priority) {
+      conditions.push(eq(projectManagementTask.priority, filters.priority as any));
+    }
     if (filters.assigneeId) {
       conditions.push(eq(projectManagementTask.assigneeId, filters.assigneeId));
     }
@@ -310,6 +317,82 @@ export class ProjectRepository {
         and(
           eq(projectManagementProject.id, projectManagementTask.projectId),
           eq(projectManagementProject.organizationId, organizationId),
+        ),
+      )
+      .leftJoin(
+        assigneeUser,
+        and(
+          eq(assigneeUser.id, projectManagementTask.assigneeId),
+          eq(assigneeUser.isDeleted, false),
+        ),
+      )
+      .where(and(...conditions))
+      .orderBy(
+        asc(projectManagementTask.status),
+        asc(projectManagementTask.dueDate),
+        desc(projectManagementTask.updatedAt),
+      );
+  }
+
+  async listOrgTasks(
+    organizationId: number,
+    filters: ProjectTaskFilters = {},
+    options: { memberUserId?: number } = {},
+  ) {
+    const conditions = [
+      eq(projectManagementTask.organizationId, organizationId),
+      eq(projectManagementTask.isArchived, false),
+      eq(projectManagementProject.isArchived, false),
+    ];
+
+    if (filters.projectId) {
+      conditions.push(eq(projectManagementTask.projectId, filters.projectId));
+    }
+    if (filters.status) {
+      conditions.push(eq(projectManagementTask.status, filters.status as any));
+    }
+    if (filters.priority) {
+      conditions.push(eq(projectManagementTask.priority, filters.priority as any));
+    }
+    if (filters.assigneeId) {
+      conditions.push(eq(projectManagementTask.assigneeId, filters.assigneeId));
+    }
+    if (filters.search?.trim()) {
+      const query = `%${filters.search.trim()}%`;
+      conditions.push(
+        or(
+          ilike(projectManagementTask.title, query),
+          ilike(projectManagementTask.description, query),
+          ilike(projectManagementProject.name, query),
+        )!,
+      );
+    }
+    if (options.memberUserId) {
+      conditions.push(
+        sql`EXISTS (
+          SELECT 1
+          FROM "project_management_member" pm
+          WHERE pm."project_id" = ${projectManagementTask.projectId}
+            AND pm."user_id" = ${options.memberUserId}
+        )`,
+      );
+    }
+
+    return db
+      .select({
+        task: projectManagementTask,
+        projectName: projectManagementProject.name,
+        assigneeId: assigneeUser.id,
+        assigneeName: assigneeUser.name,
+        assigneeEmail: assigneeUser.email,
+      })
+      .from(projectManagementTask)
+      .innerJoin(
+        projectManagementProject,
+        and(
+          eq(projectManagementProject.id, projectManagementTask.projectId),
+          eq(projectManagementProject.organizationId, organizationId),
+          eq(projectManagementProject.isArchived, false),
         ),
       )
       .leftJoin(
@@ -374,6 +457,12 @@ export class ProjectRepository {
 
     if (filters.status) {
       conditions.push(eq(projectManagementTask.status, filters.status as any));
+    }
+    if (filters.priority) {
+      conditions.push(eq(projectManagementTask.priority, filters.priority as any));
+    }
+    if (filters.projectId) {
+      conditions.push(eq(projectManagementTask.projectId, filters.projectId));
     }
     if (filters.search?.trim()) {
       const query = `%${filters.search.trim()}%`;
@@ -623,6 +712,41 @@ export class ProjectRepository {
   async logActivity(data: typeof projectManagementActivity.$inferInsert) {
     const [entry] = await db.insert(projectManagementActivity).values(data).returning();
     return entry;
+  }
+
+  async listTaskComments(taskId: number, projectId: number, organizationId: number) {
+    return db
+      .select({
+        id: projectManagementTaskComment.id,
+        taskId: projectManagementTaskComment.taskId,
+        projectId: projectManagementTaskComment.projectId,
+        message: projectManagementTaskComment.message,
+        createdAt: projectManagementTaskComment.createdAt,
+        authorId: commentAuthor.id,
+        authorName: commentAuthor.name,
+        authorEmail: commentAuthor.email,
+      })
+      .from(projectManagementTaskComment)
+      .leftJoin(
+        commentAuthor,
+        and(
+          eq(commentAuthor.id, projectManagementTaskComment.authorId),
+          eq(commentAuthor.isDeleted, false),
+        ),
+      )
+      .where(
+        and(
+          eq(projectManagementTaskComment.taskId, taskId),
+          eq(projectManagementTaskComment.projectId, projectId),
+          eq(projectManagementTaskComment.organizationId, organizationId),
+        ),
+      )
+      .orderBy(asc(projectManagementTaskComment.createdAt), asc(projectManagementTaskComment.id));
+  }
+
+  async createTaskComment(data: typeof projectManagementTaskComment.$inferInsert) {
+    const [comment] = await db.insert(projectManagementTaskComment).values(data).returning();
+    return comment;
   }
 
   async recalculateProjectProgress(projectId: number, organizationId: number) {

@@ -2149,6 +2149,28 @@ export const projectManagementActivity = pgTable("project_management_activity", 
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const projectManagementTaskComment = pgTable(
+  "project_management_task_comment",
+  {
+    id: serial("id").primaryKey(),
+    taskId: integer("task_id")
+      .notNull()
+      .references(() => projectManagementTask.id, { onDelete: "cascade" }),
+    projectId: integer("project_id")
+      .notNull()
+      .references(() => projectManagementProject.id, { onDelete: "cascade" }),
+    organizationId: integer("organization_id")
+      .notNull()
+      .references((): any => organizations.id),
+    authorId: integer("author_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    message: text("message").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+);
+
 // ==========================
 // Visitor Intelligence
 // ==========================

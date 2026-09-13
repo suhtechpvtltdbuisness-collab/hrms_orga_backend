@@ -169,6 +169,23 @@ function mapMember(row: any) {
   };
 }
 
+function mapComment(row: any) {
+  return {
+    id: row.id,
+    taskId: row.taskId,
+    projectId: row.projectId,
+    message: row.message,
+    createdAt: row.createdAt,
+    author: row.authorId
+      ? {
+          id: row.authorId,
+          name: row.authorName,
+          email: row.authorEmail,
+        }
+      : null,
+  };
+}
+
 function mapActivity(row: any) {
   return {
     id: row.id,
@@ -586,9 +603,36 @@ export class ProjectServices {
     const rows = await this.repo.listTasks(projectId, getOrgId(currentUser), {
       search: query.search || query.query || query.q,
       status: query.status,
+      priority: query.priority,
       assigneeId: parseOptionalInt(query.assigneeId, "assigneeId") || undefined,
     });
     return { success: true, data: { items: rows.map(mapTask) } };
+  }
+
+  async allTasks(currentUser: CurrentUser, query: any = {}) {
+    await this.requireProjectManager(currentUser);
+    const organizationId = getOrgId(currentUser);
+    const projectId = parseOptionalInt(query.projectId, "projectId") || undefined;
+    if (projectId) {
+      await this.requireProjectAccess(projectId, currentUser);
+    }
+    const rows = await this.repo.listOrgTasks(organizationId, {
+      search: query.search || query.query || query.q,
+      status: query.status,
+      priority: query.priority,
+      projectId,
+      assigneeId: parseOptionalInt(query.assigneeId, "assigneeId") || undefined,
+    });
+    return { success: true, data: { items: rows.map(mapTask) } };
+  }
+
+  async getTask(projectId: number, taskId: number, currentUser: CurrentUser) {
+    await this.requireProjectAccess(projectId, currentUser);
+    const row = await this.repo.getTaskById(taskId, projectId, getOrgId(currentUser));
+    if (!row) {
+      throw Object.assign(new Error("Task not found"), { statusCode: 404 });
+    }
+    return { success: true, data: mapTask(row) };
   }
 
   async createTask(projectId: number, body: any, currentUser: CurrentUser) {
@@ -622,7 +666,9 @@ export class ProjectServices {
       createdBy: currentUser.id,
       startDate: payload.startDate || null,
       dueDate: payload.dueDate || null,
-      progress: payload.progress ?? 0,
+      progress:
+        payload.progress ??
+        (payload.status === "COMPLETED" ? 100 : 0),
     });
 
     await this.repo.recalculateProjectProgress(projectId, organizationId);
@@ -783,11 +829,76 @@ export class ProjectServices {
     return { success: true, data: { items: rows.map(mapActivity) } };
   }
 
+  async listTaskComments(projectId: number, taskId: number, currentUser: CurrentUser) {
+    await this.requireProjectAccess(projectId, currentUser);
+    const organizationId = getOrgId(currentUser);
+    const task = await this.repo.getTaskById(taskId, projectId, organizationId);
+    if (!task) {
+      throw Object.assign(new Error("Task not found"), { statusCode: 404 });
+    }
+    const rows = await this.repo.listTaskComments(taskId, projectId, organizationId);
+    return { success: true, data: { items: rows.map(mapComment) } };
+  }
+
+  async addTaskComment(
+    projectId: number,
+    taskId: number,
+    body: any,
+    currentUser: CurrentUser,
+  ) {
+    await this.requireProjectAccess(projectId, currentUser);
+    const organizationId = getOrgId(currentUser);
+    const task = await this.repo.getTaskById(taskId, projectId, organizationId);
+    if (!task) {
+      throw Object.assign(new Error("Task not found"), { statusCode: 404 });
+    }
+
+    const message = String(body.message || body.comment || "").trim();
+    if (!message) {
+      throw Object.assign(new Error("Comment cannot be empty"), { statusCode: 400 });
+    }
+
+    const comment = await this.repo.createTaskComment({
+      taskId,
+      projectId,
+      organizationId,
+      authorId: currentUser.id,
+      message,
+    });
+
+    await this.logProjectActivity(
+      projectId,
+      organizationId,
+      currentUser,
+      "TASK_COMMENT_ADDED",
+      `${currentUser.name} commented on ${task.task.title}.`,
+      "TASK",
+      taskId,
+      { commentId: comment.id },
+    );
+
+    return {
+      success: true,
+      data: mapComment({
+        id: comment.id,
+        taskId: comment.taskId,
+        projectId: comment.projectId,
+        message: comment.message,
+        createdAt: comment.createdAt,
+        authorId: currentUser.id,
+        authorName: currentUser.name,
+        authorEmail: currentUser.email,
+      }),
+    };
+  }
+
   async myTasks(currentUser: CurrentUser, query: any = {}) {
     const organizationId = getOrgId(currentUser);
     const rows = await this.repo.listUserTasks(currentUser.id, organizationId, {
       search: query.search || query.query || query.q,
       status: query.status,
+      priority: query.priority,
+      projectId: parseOptionalInt(query.projectId, "projectId") || undefined,
     });
     return { success: true, data: { items: rows.map(mapTask) } };
   }

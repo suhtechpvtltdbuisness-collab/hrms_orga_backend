@@ -82,6 +82,20 @@ export const listProjectTasks = run(async (req, res) => {
   );
 });
 
+export const listAllTasks = run(async (req, res) => {
+  res.json(await service.allTasks(res.locals.user, req.query));
+});
+
+export const getProjectTask = run(async (req, res) => {
+  res.json(
+    await service.getTask(
+      readParam(req.params.projectId, "project"),
+      readParam(req.params.taskId, "task"),
+      res.locals.user,
+    ),
+  );
+});
+
 export const createProjectTask = run(async (req, res) => {
   res.status(201).json(
     await service.createTask(readParam(req.params.projectId, "project"), req.body, res.locals.user),
@@ -104,6 +118,27 @@ export const archiveProjectTask = run(async (req, res) => {
     await service.archiveTask(
       readParam(req.params.projectId, "project"),
       readParam(req.params.taskId, "task"),
+      res.locals.user,
+    ),
+  );
+});
+
+export const listProjectTaskComments = run(async (req, res) => {
+  res.json(
+    await service.listTaskComments(
+      readParam(req.params.projectId, "project"),
+      readParam(req.params.taskId, "task"),
+      res.locals.user,
+    ),
+  );
+});
+
+export const createProjectTaskComment = run(async (req, res) => {
+  res.status(201).json(
+    await service.addTaskComment(
+      readParam(req.params.projectId, "project"),
+      readParam(req.params.taskId, "task"),
+      req.body,
       res.locals.user,
     ),
   );

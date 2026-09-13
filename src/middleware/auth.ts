@@ -13,13 +13,15 @@ declare global {
 }
 
 export const extractAccessToken = (req: Request): string | undefined => {
-  if (req.cookies?.accessToken) {
-    return req.cookies.accessToken;
-  }
-
+  // Prefer Authorization — SPA refreshes update localStorage Bearer tokens.
+  // Stale httpOnly cookies were winning before and caused repeated 401s.
   const authHeader = req.headers.authorization;
   if (authHeader?.startsWith("Bearer ")) {
     return authHeader.substring(7);
+  }
+
+  if (req.cookies?.accessToken) {
+    return req.cookies.accessToken;
   }
 
   return undefined;

@@ -4,7 +4,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "dev": "nodemon --exec tsx src/server.ts",
+    "dev": "NODE_OPTIONS=--dns-result-order=ipv4first nodemon --exec tsx src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
     "db:generate": "drizzle-kit generate",
@@ -12,7 +12,8 @@
     "migrate": "tsx src/db/migrate.ts",
     "migrate:interview-google-meet": "tsx src/db/migrate_interview_google_meet.ts",
     "migrate:visitors": "tsx src/db/migrate_visitors.ts",
-    "migrate:projects": "tsx src/db/migrate_projects.ts"
+    "migrate:projects": "tsx src/db/migrate_projects.ts",
+    "migrate:project-comments": "tsx src/db/migrate_project_comments.ts"
   },
   "keywords": [],
   "author": "",
